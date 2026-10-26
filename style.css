@@ -59,6 +59,7 @@ button:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 3px; }
 .mode-panel select { width: 100%; padding: 10px 12px; margin-bottom: 6px; border: 1px solid rgba(255,232,198,.22); border-radius: 10px; color: var(--cream); background: #32251d; font: inherit; }
 .mode-panel select:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 2px; }
 .stage-description { min-height: 1.4em; margin: 0 0 10px; color: #cdbba2; font-size: .78rem; }
+.stage-recommendation { margin: 0 0 10px; padding: 8px 10px; border-left: 3px solid #dca45f; border-radius: 7px; background: rgba(220,164,95,.1); color: #f0d5a9; text-align: left; font-size: .76rem; line-height: 1.45; }
 .mode-panel .secondary { margin-top: 9px; }
 .accessibility-panel, .achievement-panel { width: min(100%, 380px); margin: 10px auto 0; padding: 10px 13px; text-align: left; border: 1px solid rgba(255,228,190,.12); border-radius: 13px; background: rgba(29,21,17,.7); color: #e6d7c3; font-size: .8rem; }
 .accessibility-panel strong { display: block; color: #ffd493; margin-bottom: 5px; }
@@ -126,7 +127,7 @@ button:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 3px; }
 .event-banner { min-height: 1.5em; margin: 0 auto 5px; color: #ffe1a8; font-size: .78rem; font-weight: 700; }
 .event-banner.active { color: #fff3d0; text-shadow: 0 0 12px rgba(255,152,67,.8); }
 @keyframes pulse { to { transform: scale(1.06); } }
-.hud { display: grid; grid-template-columns: 1.25fr repeat(4, 1fr); gap: 5px; align-items: center; margin-bottom: 5px; }
+.hud { display: grid; grid-template-columns: 1.25fr repeat(5, 1fr); gap: 5px; align-items: center; margin-bottom: 5px; }
 .hud > div { min-width: 0; padding: 6px 4px; border-radius: 9px; background: rgba(38,27,22,.78); color: #ddcbb2; font-size: clamp(.7rem, 2.5vw, .82rem); white-space: nowrap; }
 .hud strong { color: #fff4de; margin-left: 2px; font-variant-numeric: tabular-nums; }
 .score-chip strong { color: #ffd17c; }
@@ -146,6 +147,8 @@ button:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 3px; }
 .tool { flex: 1; padding: 8px 4px; font-size: clamp(.69rem, 2.8vw, .82rem); border-radius: 10px; background: linear-gradient(180deg, #514136, #312720); box-shadow: 0 3px 0 #1c1511; }
 .tool.active { color: #2a1d13; background: linear-gradient(180deg, #ffdb9d, #d99a52); box-shadow: 0 3px 0 #8b5729; }
 .tool:disabled { opacity: .42; filter: grayscale(.7); cursor: not-allowed; transform: none; }
+.tool-key-hint { margin: -3px 0 6px; color: #d7c5a7; font-size: .68rem; }
+.tool-key-hint kbd { display: inline-block; min-width: 1.2em; padding: 1px 4px; border: 1px solid rgba(255,235,202,.5); border-radius: 4px; color: #fff0d2; background: rgba(0,0,0,.28); font: inherit; font-weight: 700; }
 .tool-tip { min-height: 1.25em; margin: 0 0 5px; color: #d9c6a9; font-size: .73rem; }
 .method-row { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; margin-bottom: 5px; }
 .method-btn { padding: 7px 11px; font-size: .76rem; background: linear-gradient(180deg, #627b84, #374f58); box-shadow: 0 3px 0 #243941; }
@@ -156,6 +159,7 @@ button:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 3px; }
 .controls button { min-width: 108px; padding: 7px 14px; font-size: .86rem; }
 .controls #endBtn { background: linear-gradient(180deg, #59483a, #372a22); box-shadow: 0 3px 0 #211913; }
 .hint { margin: 7px 0 0; min-height: 1.25em; color: #ffdba6; font-size: .82rem; opacity: .95; }
+.hint.achievement-toast { display: inline-block; padding: 6px 12px; border: 1px solid #ffe37c; border-radius: 9px; background: rgba(67,47,12,.94); color: #fff36b; font-weight: 700; box-shadow: 0 0 18px rgba(255,227,124,.25); }
 .result-score { font-size: 1.75rem; font-weight: 700; color: #ffd17c; margin: 7px 0; }
 .result-cleanliness { display: inline-block; margin: 0 0 12px; padding: 8px 14px; border-radius: 99px; color: #e8d8bd; background: rgba(255,230,188,.09); }
 .result-cleanliness strong { color: #ffdb92; margin-left: 5px; }
@@ -182,6 +186,9 @@ button:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 3px; }
 @media (max-width: 440px) {
   .knowledge-grid { grid-template-columns: 1fr; }
   .tool { min-height: 52px; line-height: 1.2; }
+  .hud { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .hud > div { font-size: .72rem; }
+  .tool-key-hint { font-size: .64rem; }
   .method-row { align-items: flex-start; }
   .method-row span { max-width: 42%; padding-top: 5px; }
   .achievement-list { grid-template-columns: 1fr; }

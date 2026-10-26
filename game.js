@@ -1,4 +1,4 @@
-// Modified 2026-10-27: modes, broths, accessibility, achievements, and seeded daily challenges.
+// Modified 2026-10-27: result comparisons, clearer feedback, and broth-specific particles.
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const scoreEl = document.getElementById('score');
@@ -35,6 +35,7 @@ const motionToggle = document.getElementById('motionToggle');
 
 const BEST_SCORE_KEY = 'hotpot-filter-simulator.best-score.v1';
 const STAGE_RECORDS_KEY = 'hotpot-filter-simulator.stage-records.v1';
+const PREVIOUS_RESULTS_KEY = 'hotpot-filter-simulator.previous-results.v1';
 const ACHIEVEMENTS_KEY = 'hotpot-filter-simulator.achievements.v1';
 const SETTINGS_KEY = 'hotpot-filter-simulator.settings.v1';
 const CHILL_PRACTICE_COOLDOWN_MS = 25_000;
@@ -53,12 +54,12 @@ const BROTHS = {
     flow: 1, aggregation: 1, boilFactor: 1, flowColor: 'rgba(255,255,232,.34)'
   },
   mala: {
-    name: '麻辣', description: '沸騰較快，湯流更強，油花容易聚集。',
+    name: '麻辣', description: '沸騰較快、湯流更強；辣椒片會隨湯流漂散，細網較好處理。',
     colors: ['#ffd193', '#ed9560', '#c95637', '#792c22'],
     flow: 1.55, aggregation: 1.45, boilFactor: 1.3, flowColor: 'rgba(255,216,157,.48)'
   },
   miso: {
-    name: '味噌', description: '湯流較緩，油花聚集較慢，撈取節奏較穩。',
+    name: '味噌', description: '湯流較緩、油花聚集較慢；豆渣顆粒容易混在食材間，適合用細網。',
     colors: ['#fff0b4', '#e4bf6c', '#bc8c3e', '#805329'],
     flow: .72, aggregation: .72, boilFactor: .72, flowColor: 'rgba(255,247,202,.3)'
   }
@@ -73,7 +74,8 @@ const ACHIEVEMENTS = [
   { id: 'clean', name: '清鍋達人', description: '單局清潔度達 100%。', skin: 'copper' },
   { id: 'accurate', name: '工具達人', description: '至少撈取 8 次，工具正確率達 90%。' },
   { id: 'gentle', name: '惜湯高手', description: '成功撈取 8 份以上，湯汁損失不超過 20 mL。' },
-  { id: 'daily', name: '每日鍋友', description: '完成一次每日固定盤面挑戰。' }
+  { id: 'daily', name: '每日鍋友', description: '完成一次每日固定盤面挑戰。' },
+  { id: 'steady', name: '穩手撈料', description: '連續 5 次正確撈取，中途沒有工具失誤。' }
 ];
 const STAGES = {
   starter: {
@@ -103,7 +105,7 @@ const TOOL_CONFIG = {
     soupLossMl: 3, tip: '孔洞讓湯流回鍋裡；接觸範圍中等，適合蔬菜和一般浮油。'
   },
   strainer: {
-    name: '細網撈沫勺', radius: 30, types: ['meat'], scoreMultiplier: 1.1,
+    name: '細網撈沫勺', radius: 30, types: ['meat', 'debris'], scoreMultiplier: 1.1,
     soupLossMl: 1, tip: '範圍較小、瞄準較精準，帶走湯汁少；適合肉沫和凝固油渣。'
   }
 };
@@ -124,6 +126,7 @@ let canvasHeight = 0;
 let pixelRatio = 1;
 let bestScore = loadBestScore();
 let stageRecords = loadStageRecords();
+let previousResults = loadPreviousResults();
 let unlockedAchievements = loadAchievements();
 const mouse = { x: 0, y: 0 };
 let gameMode = 'challenge';
@@ -132,6 +135,7 @@ let brothId = 'clear';
 let isDailyChallenge = false;
 let dailyChallengeSeed = null;
 let dailyChallengeDate = '';
+let sharedDailyChallenge = false;
 let randomState = 0;
 let randomSeedActive = false;
 let activeStage = STAGES.home;
@@ -142,10 +146,12 @@ let chilledUntil = 0;
 let chillRemainingMs = 0;
 let chillCooldownUntil = 0;
 let chillCooldownRemainingMs = 0;
-let scooped = { meat: 0, veg: 0, oil: 0, bone: 0, boneHits: 0, fail: 0 };
-let initialMass = { meat: 0, veg: 0, oil: 0, bone: 0 };
-let removedMass = { meat: 0, veg: 0, oil: 0, bone: 0 };
+let scooped = { meat: 0, veg: 0, oil: 0, bone: 0, debris: 0, boneHits: 0, fail: 0 };
+let initialMass = { meat: 0, veg: 0, oil: 0, bone: 0, debris: 0 };
+let removedMass = { meat: 0, veg: 0, oil: 0, bone: 0, debris: 0 };
 let simulationTimeMs = 0;
+let correctActionStreak = 0;
+let brothDebrisSpawned = 0;
 let boilingNow = false;
 let reduceMotion = false;
 let highContrast = false;
@@ -191,6 +197,17 @@ function loadStageRecords() {
 
 function saveStageRecords() {
   try { window.localStorage.setItem(STAGE_RECORDS_KEY, JSON.stringify(stageRecords)); } catch { /* Local storage is optional. */ }
+}
+
+function loadPreviousResults() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PREVIOUS_RESULTS_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch { return {}; }
+}
+
+function savePreviousResults() {
+  try { window.localStorage.setItem(PREVIOUS_RESULTS_KEY, JSON.stringify(previousResults)); } catch { /* Local storage is optional. */ }
 }
 
 function loadAchievements() {
@@ -266,6 +283,26 @@ function unlockAchievementsForRun({ cleanliness, correctRate, attempts, successf
   return newlyUnlocked;
 }
 
+function unlockAchievement(id, notify = true) {
+  const achievement = ACHIEVEMENTS.find(item => item.id === id);
+  if (!achievement || unlockedAchievements.includes(id)) return false;
+  unlockedAchievements.push(id);
+  saveAchievements();
+  renderAchievements();
+  if (notify) showAchievementToast(`🏅 成就解鎖：${achievement.name}`);
+  return true;
+}
+
+function showAchievementToast(message) {
+  hintEl.textContent = message;
+  hintEl.classList.add('achievement-toast');
+  clearTimeout(showHint.timer);
+  showHint.timer = window.setTimeout(() => {
+    hintEl.classList.remove('achievement-toast');
+    if (hintEl.textContent === message) hintEl.textContent = '';
+  }, 3_500);
+}
+
 function updateStageRecordDisplay() {
   const stageId = stageSelect.value in STAGES ? stageSelect.value : 'home';
   const record = Number(stageRecords[stageId]) || 0;
@@ -276,6 +313,14 @@ function dailyDateTaipei() {
   const parts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
   const value = Object.fromEntries(parts.map(part => [part.type, part.value]));
   return `${value.year}${value.month}${value.day}`;
+}
+
+function formatDailyDate(value) {
+  return /^\d{8}$/.test(value) ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}` : value;
+}
+
+function seedSuffix(seed) {
+  return formatSeed(seed).slice(-4).toUpperCase();
 }
 
 function hashSeed(value) {
@@ -335,8 +380,8 @@ function randomPosition(margin = 10) {
 
 function spawn() {
   particles = [];
-  initialMass = { meat: 0, veg: 0, oil: 0, bone: 0 };
-  removedMass = { meat: 0, veg: 0, oil: 0, bone: 0 };
+  initialMass = { meat: 0, veg: 0, oil: 0, bone: 0, debris: 0 };
+  removedMass = { meat: 0, veg: 0, oil: 0, bone: 0, debris: 0 };
   const counts = activeStage.counts;
 
   // Fewer, larger pieces give the broth room to read as a single pot of soup.
@@ -404,6 +449,34 @@ function spawn() {
     });
     initialMass.bone += 2;
   }
+
+  // Broth-specific debris starts sparse and may drift in during later boil events.
+  brothDebrisSpawned = 0;
+  spawnBrothDebris(currentStageId === 'feast' ? 7 : 4);
+}
+
+function spawnBrothDebris(requestedCount = 1) {
+  const debrisKind = brothId === 'mala' ? 'chili' : brothId === 'miso' ? 'miso' : null;
+  if (!debrisKind) return 0;
+  const count = Math.min(requestedCount, 10 - brothDebrisSpawned);
+  for (let i = 0; i < count; i++) {
+    const pos = randomPosition(12);
+    particles.push({
+      ...pos,
+      r: debrisKind === 'chili' ? 7 + random() * 4 : 6 + random() * 3,
+      type: 'debris',
+      debrisKind,
+      name: debrisKind === 'chili' ? '辣椒片' : '味噌豆渣',
+      units: 1,
+      mass: 1,
+      vx: (random() - .5) * .22,
+      vy: (random() - .5) * .22,
+      rotation: random() * Math.PI
+    });
+    initialMass.debris += 1;
+    brothDebrisSpawned++;
+  }
+  return count;
 }
 
 function drawHandle(cx, cy, rx, ry, side) {
@@ -585,7 +658,7 @@ function drawOil(p, now = performance.now()) {
   const chilled = isOilChilled(now);
   const shimmer = reduceMotion ? 0 : Math.sin(now / 420 + p.shimmer) * .22;
   ctx.save();
-  ctx.shadowColor = chilled ? 'rgba(136,225,245,.48)' : 'rgba(115,69,27,.2)';
+  ctx.shadowColor = chilled && highContrast ? 'rgba(0,0,0,.98)' : chilled ? 'rgba(136,225,245,.48)' : 'rgba(115,69,27,.2)';
   ctx.shadowBlur = Math.max(2, r * .28);
   const oil = ctx.createRadialGradient(p.x - r * .3, p.y - r * .34, r * .06, p.x, p.y, r * 1.08);
   oil.addColorStop(0, chilled ? 'rgba(255,255,235,.98)' : 'rgba(255,245,197,.93)');
@@ -597,8 +670,8 @@ function drawOil(p, now = performance.now()) {
   ctx.ellipse(p.x, p.y, r * 1.13, r * .9, p.shimmer || 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.shadowBlur = 0;
-  ctx.strokeStyle = chilled ? 'rgba(219,255,255,.95)' : 'rgba(255,248,215,.72)';
-  ctx.lineWidth = Math.max(1, r * .08);
+  ctx.strokeStyle = chilled && highContrast ? '#00ffff' : chilled ? 'rgba(219,255,255,.95)' : 'rgba(255,248,215,.72)';
+  ctx.lineWidth = chilled && highContrast ? Math.max(2.4, r * .18) : Math.max(1, r * .08);
   ctx.stroke();
   ctx.beginPath();
   ctx.ellipse(p.x - r * .15 + shimmer * r, p.y - r * (.27 + shimmer * .18), r * (.4 + shimmer * .12), r * .18, -.22, Math.PI * 1.08, Math.PI * 1.86);
@@ -606,8 +679,8 @@ function drawOil(p, now = performance.now()) {
   ctx.lineWidth = Math.max(1, r * .1);
   ctx.stroke();
   if (chilled) {
-    ctx.strokeStyle = 'rgba(222,255,255,.8)';
-    ctx.lineWidth = Math.max(1, r * .12);
+    ctx.strokeStyle = highContrast ? '#fff36b' : 'rgba(222,255,255,.8)';
+    ctx.lineWidth = highContrast ? Math.max(2, r * .16) : Math.max(1, r * .12);
     ctx.beginPath();
     ctx.ellipse(p.x, p.y, r * 1.3, r * 1.08, p.shimmer || 0, 0, Math.PI * 2);
     ctx.stroke();
@@ -686,7 +759,7 @@ function drawBone(p) {
   ctx.rotate(p.rotation || 0);
   ctx.shadowColor = 'rgba(55,35,20,.5)';
   ctx.shadowBlur = 5;
-  ctx.fillStyle = p.integrity > 1 ? '#e8dfc8' : '#cfc3a6';
+  ctx.fillStyle = p.integrity > 1 ? '#e8dfc8' : highContrast ? '#fff0a6' : '#cfc3a6';
   ctx.strokeStyle = highContrast ? '#16110d' : 'rgba(82,59,39,.7)';
   ctx.lineWidth = highContrast ? 2.5 : 1.2;
   ctx.beginPath();
@@ -701,13 +774,54 @@ function drawBone(p) {
     ctx.stroke();
   }
   if (p.integrity === 1) {
-    ctx.strokeStyle = '#744232';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = highContrast ? '#c90000' : '#744232';
+    ctx.lineWidth = highContrast ? 3 : 2;
     ctx.beginPath();
     ctx.moveTo(-r * .12, -r * .2);
     ctx.lineTo(r * .04, 0);
     ctx.lineTo(-r * .08, r * .16);
     ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = p.integrity === 1 ? (highContrast ? '#c90000' : '#744232') : '#4b3928';
+  ctx.beginPath();
+  ctx.arc(r * .62, -r * .62, r * .25, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fffaf0';
+  ctx.font = `bold ${Math.max(10, r * .3)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(p.integrity), r * .62, -r * .62);
+  ctx.restore();
+}
+
+function drawDebris(p) {
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(p.rotation || 0);
+  if (p.debrisKind === 'chili') {
+    ctx.fillStyle = highContrast ? '#ff4a22' : '#b9442e';
+    ctx.strokeStyle = highContrast ? '#fff36b' : 'rgba(94,31,22,.85)';
+    ctx.lineWidth = highContrast ? 1.8 : 1;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, p.r * 1.05, p.r * .38, -.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#f7d88c';
+    ctx.beginPath();
+    ctx.arc(-p.r * .25, 0, Math.max(1.2, p.r * .12), 0, Math.PI * 2);
+    ctx.arc(p.r * .25, 0, Math.max(1.2, p.r * .12), 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.fillStyle = highContrast ? '#fff36b' : '#d3c39a';
+    ctx.strokeStyle = highContrast ? '#111' : 'rgba(86,66,43,.8)';
+    ctx.lineWidth = highContrast ? 1.8 : 1;
+    for (const [x, y, scale] of [[-.32, -.12, .55], [.18, -.28, .45], [.3, .2, .58], [-.2, .25, .42]]) {
+      ctx.beginPath();
+      ctx.arc(x * p.r, y * p.r, Math.max(2, p.r * scale), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -718,6 +832,7 @@ function drawParticles(now = performance.now()) {
   particles.filter(p => p.type === 'meat').forEach(drawMeat);
   particles.filter(p => p.type === 'veg').forEach(drawVegetable);
   particles.filter(p => p.type === 'bone').forEach(drawBone);
+  particles.filter(p => p.type === 'debris').forEach(drawDebris);
 }
 
 function drawTool() {
@@ -906,6 +1021,7 @@ function updateCounts() {
   vegCountEl.textContent = scooped.veg;
   oilCountEl.textContent = scooped.oil;
   document.getElementById('boneCount').textContent = scooped.bone;
+  document.getElementById('debrisCount').textContent = scooped.debris;
 }
 
 function isGoodToolFor(particle, now = performance.now()) {
@@ -945,6 +1061,8 @@ function tryScoop() {
   let lost = 0;
   const remove = new Set();
   let successfulActions = 0;
+  const failuresBeforeScoop = scooped.fail;
+  let crackedBone = false;
   caught.forEach((p, i) => {
     const good = isGoodToolFor(p, now);
     const isBig = p.r > 20;
@@ -961,6 +1079,7 @@ function tryScoop() {
       if (p.type === 'bone') scooped.boneHits++;
       if (p.type === 'bone' && p.integrity > 1) {
         p.integrity--;
+        crackedBone = true;
         showHint('骨頭較大，要用有洞湯勺再撈一次！');
       } else {
         scooped[p.type]++;
@@ -983,7 +1102,7 @@ function tryScoop() {
   scoreEl.textContent = score;
   updateCounts();
 
-  playSound(lost > 0 ? 'fail' : 'scoop');
+  playSound(lost > 0 ? 'fail' : crackedBone ? 'boneCrack' : 'scoop');
   if (gained > lost) {
     const bigBonus = caught.some(p => p.r > 20 && isGoodToolFor(p, now));
     const coldBonus = caught.some(p => p.type === 'oil' && isOilChilled(now) && isGoodToolFor(p, now));
@@ -992,6 +1111,13 @@ function tryScoop() {
     showHint(`工具不合適，漏掉了… -${lost - gained}`);
   }
   if (currentTool === 'spoon' && spoonStreak >= 2) showHint(`湯匙連續使用，帶走湯汁增加 ${Math.round(spoonStreak * 25)}%`);
+  if (scooped.fail === failuresBeforeScoop && successfulActions > 0) {
+    correctActionStreak++;
+    if (correctActionStreak >= 5) unlockAchievement('steady');
+    else if (correctActionStreak >= 3) showHint(`連續正確撈取 ${correctActionStreak}/5，再穩穩撈兩次！`);
+  } else if (scooped.fail > failuresBeforeScoop) {
+    correctActionStreak = 0;
+  }
   if (challengeRule === 'perfect' && scooped.fail > 0) {
     endGame('mistake');
     return;
@@ -1087,6 +1213,7 @@ function activateChillMethod() {
 }
 
 function showHint(message) {
+  hintEl.classList.remove('achievement-toast');
   hintEl.textContent = message;
   clearTimeout(showHint.timer);
   showHint.timer = setTimeout(() => {
@@ -1101,12 +1228,17 @@ function playSound(kind) {
     if (!AudioContextClass) return;
     audioContext ||= new AudioContextClass();
     if (audioContext.state === 'suspended') audioContext.resume();
-    const notes = kind === 'scoop' ? [660, 880] : kind === 'chill' ? [520, 740, 980] : kind === 'tick' ? [420] : [190, 140];
+    const notes = kind === 'scoop' ? [660, 880]
+      : kind === 'chill' ? [520, 740, 980]
+        : kind === 'tick' ? [420]
+          : kind === 'boil' ? [300, 360]
+            : kind === 'boneCrack' ? [240, 420]
+              : [190, 140];
     notes.forEach((frequency, index) => {
       const start = audioContext.currentTime + index * .075;
       const oscillator = audioContext.createOscillator();
       const gain = audioContext.createGain();
-      oscillator.type = kind === 'fail' ? 'triangle' : 'sine';
+      oscillator.type = ['fail', 'boneCrack'].includes(kind) ? 'triangle' : 'sine';
       oscillator.frequency.setValueAtTime(frequency, start);
       gain.gain.setValueAtTime(.0001, start);
       gain.gain.exponentialRampToValueAtTime(.075, start + .012);
@@ -1134,8 +1266,8 @@ function updateEventDisplay() {
   const broth = BROTHS[brothId];
   eventBanner.classList.toggle('active', boilingNow);
   eventBanner.textContent = boilingNow
-    ? `🔥 ${broth.name}沸騰湯流！食材移動加快，油花更容易聚集`
-    : `${broth.name}湯面平穩｜留意下一波沸騰湯流`;
+    ? `🔥 ${broth.name}沸騰湯流！食材移動加快，油花更容易聚集${brothId === 'mala' ? '，辣椒片也會漂散' : brothId === 'miso' ? '，豆渣顆粒隨湯流散開' : ''}`
+    : `${broth.name}湯面平穩｜留意下一波沸騰湯流${brothId === 'miso' ? '；豆渣顆粒混在食材間' : ''}`;
 }
 
 function updateTimerDisplay() {
@@ -1165,12 +1297,20 @@ function loop(now) {
     return;
   }
 
-  const frameScale = lastFrameTime ? Math.min(2.4, (now - lastFrameTime) / (1000 / 60)) : 1;
+  const elapsedMs = lastFrameTime ? Math.max(0, now - lastFrameTime) : 0;
+  const frameScale = lastFrameTime ? Math.min(2.4, elapsedMs / (1000 / 60)) : 1;
   lastFrameTime = now;
-  simulationTimeMs += frameScale * (1000 / 60);
+  // Event cadence follows active wall-clock time; physics still caps large frame steps.
+  simulationTimeMs += elapsedMs;
   const wasBoiling = boilingNow;
   boilingNow = currentBoilState();
-  if (boilingNow !== wasBoiling) updateEventDisplay();
+  if (boilingNow !== wasBoiling) {
+    updateEventDisplay();
+    if (boilingNow) {
+      playSound('boil');
+      spawnBrothDebris(1);
+    }
+  }
   updatePhysics(frameScale);
   drawSoup(now);
   drawParticles(now);
@@ -1185,6 +1325,7 @@ function startGame(mode = 'challenge', daily = false) {
   const dailyInfo = isDailyChallenge ? dailyChallengeDescriptor() : null;
   dailyChallengeSeed = dailyInfo?.seed ?? null;
   dailyChallengeDate = dailyInfo?.date ?? '';
+  sharedDailyChallenge = Boolean(dailyInfo?.shared);
   currentStageId = isDailyChallenge ? 'home' : (stageSelect.value in STAGES ? stageSelect.value : 'home');
   challengeRule = isDailyChallenge ? 'score' : (mode === 'practice' ? 'score' : (ruleSelect.value in RULES ? ruleSelect.value : 'score'));
   brothId = isDailyChallenge ? ['clear', 'mala', 'miso'][dailyChallengeSeed % 3] : (brothSelect.value in BROTHS ? brothSelect.value : 'clear');
@@ -1202,13 +1343,13 @@ function startGame(mode = 'challenge', daily = false) {
   chillRemainingMs = 0;
   chillCooldownUntil = 0;
   chillCooldownRemainingMs = 0;
-  chillCooldownRemainingMs = 0;
   simulationTimeMs = 0;
   boilingNow = false;
   spoonStreak = 0;
   lastSpoonUse = 0;
   lastCountdownSecond = null;
-  scooped = { meat: 0, veg: 0, oil: 0, bone: 0, boneHits: 0, fail: 0 };
+  scooped = { meat: 0, veg: 0, oil: 0, bone: 0, debris: 0, boneHits: 0, fail: 0 };
+  correctActionStreak = 0;
   scoreEl.textContent = '0';
   timerLabel.textContent = mode === 'practice'
     ? `${BROTHS[brothId].name}｜練習模式`
@@ -1235,13 +1376,14 @@ function startGame(mode = 'challenge', daily = false) {
   if (mode === 'challenge') deadline = performance.now() + remainingMs;
   boilingNow = currentBoilState();
   updateEventDisplay();
+  if (boilingNow) playSound('boil');
   updateMethodDisplay();
   lastFrameTime = 0;
   canvas.focus({ preventScroll: true });
   cancelAnimationFrame(animationFrame);
   animationFrame = requestAnimationFrame(loop);
   if (mode === 'practice') hintEl.textContent = '先辨認食材，再選工具；骨頭要用有洞湯勺撈兩次。';
-  else if (isDailyChallenge) hintEl.textContent = `每日固定盤面｜${dailyChallengeDate}｜種子 ${formatSeed(dailyChallengeSeed)}。分享連結讓朋友玩同一盤！`;
+  else if (isDailyChallenge) hintEl.textContent = `${sharedDailyChallenge ? `分享盤面（原始日期 ${formatDailyDate(dailyChallengeDate)}）` : `今日固定盤面｜${formatDailyDate(dailyChallengeDate)}`}｜${BROTHS[brothId].name}｜種子尾碼 #${seedSuffix(dailyChallengeSeed)}。分享連結讓朋友玩同一盤！`;
   else hintEl.textContent = `${activeStage.name}｜${RULES[challengeRule].name}開始！肉沫用細網、骨頭用有洞湯勺撈兩次。`;
 }
 
@@ -1291,6 +1433,11 @@ function getCategoryCleanliness(type) {
   return Math.max(0, Math.min(100, Math.round(removedMass[type] / initialMass[type] * 100)));
 }
 
+function formatCategoryCleanliness(type, label) {
+  const rate = getCategoryCleanliness(type);
+  return rate === null ? `本關無${label}` : `${rate}%`;
+}
+
 function endGame(reason = 'timeout') {
   if (gameEnded) return;
   gameEnded = true;
@@ -1301,19 +1448,21 @@ function endGame(reason = 'timeout') {
   finalScoreEl.textContent = score;
 
   const remaining = getRemainingIngredientUnits();
-  const categoryRates = Object.fromEntries(['meat', 'veg', 'oil', 'bone'].map(type => [type, getCategoryCleanliness(type)]));
+  const categoryRates = Object.fromEntries(['meat', 'veg', 'oil', 'bone', 'debris'].map(type => [type, getCategoryCleanliness(type)]));
   const activeRates = Object.values(categoryRates).filter(rate => rate !== null);
-  const cleanliness = activeRates.length ? Math.round(activeRates.reduce((sum, rate) => sum + rate, 0) / activeRates.length) : 0;
-  const successful = scooped.meat + scooped.veg + scooped.oil + scooped.boneHits;
+  // No initial target means nothing was left dirty; do not penalize an absent category.
+  const cleanliness = activeRates.length ? Math.round(activeRates.reduce((sum, rate) => sum + rate, 0) / activeRates.length) : 100;
+  const successful = scooped.meat + scooped.veg + scooped.oil + scooped.boneHits + scooped.debris;
   const attempts = successful + scooped.fail;
   const correctRate = attempts ? Math.round(successful / attempts * 100) : 0;
   const errorRate = attempts ? Math.round(scooped.fail / attempts * 100) : 0;
   const clearedAll = particles.length === 0;
   const missionWon = challengeRule === 'clear' ? clearedAll : challengeRule === 'perfect' ? reason !== 'mistake' : null;
-  cleanlinessEl.textContent = `${cleanliness}%`;
+  cleanlinessEl.textContent = activeRates.length ? `${cleanliness}%` : '100%（無清除目標）';
 
   let newRecord = false;
   let recordScore = Number(stageRecords[currentStageId]) || 0;
+  const previousBestScore = recordScore;
   if (gameMode === 'challenge' && !isDailyChallenge && challengeRule === 'score' && score > recordScore) {
     recordScore = score;
     stageRecords[currentStageId] = score;
@@ -1333,18 +1482,39 @@ function endGame(reason = 'timeout') {
   resultLabel.textContent = gameMode === 'practice'
     ? `練習模式｜${BROTHS[brothId].name}｜不限時`
     : isDailyChallenge
-      ? `每日固定盤面｜${dailyChallengeDate} · ${BROTHS[brothId].name} · 種子 ${formatSeed(dailyChallengeSeed)}`
+      ? `${sharedDailyChallenge ? '分享盤面' : '每日固定盤面'}｜原始日期 ${formatDailyDate(dailyChallengeDate)} · ${BROTHS[brothId].name} · 種子尾碼 #${seedSuffix(dailyChallengeSeed)}`
       : `挑戰關卡｜${activeStage.name} · ${RULES[challengeRule].name} · ${BROTHS[brothId].name} · ${Math.round(activeDurationMs / 1000)} 秒`;
+  const resultKey = `${currentStageId}:${challengeRule}:${brothId}`;
+  const previousRun = gameMode === 'challenge' && !isDailyChallenge ? previousResults[resultKey] : null;
+  const bestCompare = gameMode === 'challenge' && !isDailyChallenge && challengeRule === 'score'
+    ? previousBestScore > 0 ? `📈 與本關最高分相比：<strong>${score >= previousBestScore ? '+' : ''}${score - previousBestScore}</strong> 分` : score > 0 ? '📈 本局建立本關第一筆分數紀錄' : '📈 尚未取得分數'
+    : '';
+  const soupCompare = previousRun
+    ? (() => {
+      const improvement = Math.round(previousRun.soupLoss - soupLossMl);
+      return improvement > 0 ? `🥣 比上次少帶走 <strong>${improvement} mL</strong> 湯汁`
+        : improvement < 0 ? `🥣 比上次多帶走 <strong>${Math.abs(improvement)} mL</strong> 湯汁`
+          : '🥣 帶走湯汁量與上次相同';
+    })()
+    : '';
   resultStats.innerHTML = `
-    <div>🥩 肉沫撈起：<strong>${scooped.meat}</strong> 份｜清除率 <strong>${categoryRates.meat ?? 0}%</strong></div>
-    <div>🥦 蔬菜撈起：<strong>${scooped.veg}</strong> 塊｜清除率 <strong>${categoryRates.veg ?? 0}%</strong></div>
-    <div>🟡 浮油撈起：<strong>${scooped.oil}</strong> 團｜清除率 <strong>${categoryRates.oil ?? 0}%</strong></div>
-    <div>🦴 骨頭完成：<strong>${scooped.bone}</strong> 塊（成功撈取 ${scooped.boneHits} 次）｜清除率 <strong>${categoryRates.bone ?? 0}%</strong></div>
+    <div>🥩 肉沫撈起：<strong>${scooped.meat}</strong> 份｜清除率 <strong>${formatCategoryCleanliness('meat', '肉沫')}</strong></div>
+    <div>🥦 蔬菜撈起：<strong>${scooped.veg}</strong> 塊｜清除率 <strong>${formatCategoryCleanliness('veg', '蔬菜')}</strong></div>
+    <div>🟡 浮油撈起：<strong>${scooped.oil}</strong> 團｜清除率 <strong>${formatCategoryCleanliness('oil', '浮油')}</strong></div>
+    <div>🦴 骨頭完成：<strong>${scooped.bone}</strong> 塊（成功撈取 ${scooped.boneHits} 次）｜清除率 <strong>${formatCategoryCleanliness('bone', '骨頭')}</strong></div>
+    <div>🌶️ 雜料撈起：<strong>${scooped.debris}</strong> 份｜清除率 <strong>${formatCategoryCleanliness('debris', '雜料')}</strong></div>
     <div>🫧 鍋中剩餘：<strong>${remaining}</strong> 份食材</div>
     <div>🎯 工具正確率：<strong>${correctRate}%</strong>｜❌ 失誤率：<strong>${errorRate}%</strong>（${scooped.fail} 次）</div>
     <div>🥣 帶走湯汁估算：<strong>${Math.round(soupLossMl)} mL</strong></div>
     <div>❄️ 冷藏凝油：<strong>${chillUsed ? '已使用' : '未使用'}</strong></div>
+    ${bestCompare ? `<div>${bestCompare}</div>` : ''}
+    ${soupCompare ? `<div>${soupCompare}</div>` : ''}
   `;
+
+  if (gameMode === 'challenge' && !isDailyChallenge) {
+    previousResults[resultKey] = { score, soupLoss: soupLossMl, finishedAt: Date.now() };
+    savePreviousResults();
+  }
 
   const newlyUnlocked = unlockAchievementsForRun({ cleanliness, correctRate, attempts, successful, totalSoupLoss: soupLossMl });
   if (gameMode === 'practice') resultComment.textContent = '練習完成！可以換湯底、規則與工具再試；冷藏效果和冷卻時間都會依時間計算。';
@@ -1374,11 +1544,15 @@ function updateMenuDescriptions() {
     : rule.description;
   brothDescription.textContent = broth.description;
   document.getElementById('startBtn').textContent = `開始${rule.name}（${Math.round(stage.durationMs * (ruleSelect.value === 'clear' ? 3 : 1) / 1000)} 秒）`;
+  document.getElementById('stageRecommendation').textContent = unlockedAchievements.includes('first')
+    ? '推薦：想放慢節奏可先練習；熟悉工具後，再挑戰熱鬧滿鍋或更嚴格規則。'
+    : '初次遊玩建議先選「新手小鍋」或「練習辨認」；關卡不鎖定，可自由嘗試。';
   updateStageRecordDisplay();
   const daily = dailyChallengeDescriptor();
+  const dailyBroth = BROTHS[['clear', 'mala', 'miso'][daily.seed % 3]];
   document.getElementById('dailyBtn').textContent = daily.shared
-    ? `挑戰分享盤面｜${daily.date}｜${formatSeed(daily.seed)}`
-    : `今日固定盤面挑戰｜${daily.date}`;
+    ? `挑戰分享盤面｜${formatDailyDate(daily.date)} · ${dailyBroth.name} · #${seedSuffix(daily.seed)}`
+    : `今日固定盤面｜${formatDailyDate(daily.date)} · ${dailyBroth.name} · #${seedSuffix(daily.seed)}`;
 }
 
 async function shareDailyChallenge() {
@@ -1407,12 +1581,14 @@ async function shareDailyChallenge() {
 }
 
 function resetLocalRecords() {
-  if (!window.confirm('確定清除所有關卡本機最高分？成就與外觀解鎖會保留。')) return;
+  if (!window.confirm('確定清除所有關卡最高分與上次比較紀錄？成就與外觀解鎖會保留。')) return;
   stageRecords = {};
+  previousResults = {};
   bestScore = 0;
   try {
     window.localStorage.removeItem(STAGE_RECORDS_KEY);
     window.localStorage.removeItem(BEST_SCORE_KEY);
+    window.localStorage.removeItem(PREVIOUS_RESULTS_KEY);
   } catch { /* Clearing unavailable storage does not affect the current session. */ }
   bestScoreMenuEl.textContent = '0';
   const button = document.getElementById('resetRecordsBtn');

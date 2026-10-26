@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Modified 2026-10-27: added practice, staged challenges, tool strategy, and method feedback. -->
+<!-- Modified 2026-10-27: added daily challenge labels, debris, and clearer play feedback. -->
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261027-4">
+<link rel="stylesheet" href="style.css?v=20261027-5">
 </head>
 <body>
 <div id="app">
@@ -42,6 +42,7 @@
         <option value="miso">味噌｜流動較慢、油花聚集較慢</option>
       </select>
       <p id="brothDescription" class="stage-description">清湯顏色較淡，方便辨認浮油。</p>
+      <p id="stageRecommendation" class="stage-recommendation">初次遊玩建議先選「新手小鍋」或「練習辨認」；關卡不鎖定，可自由嘗試。</p>
       <button id="startBtn" class="mode-btn">開始限時挑戰</button>
       <button id="dailyBtn" class="secondary mode-btn">今日固定盤面挑戰</button>
       <button id="practiceBtn" class="secondary mode-btn">練習辨認（不限時）</button>
@@ -73,6 +74,7 @@
       <li><strong>肉沫</strong>：細碎，用細網撈沫勺最精準。</li>
       <li><strong>蔬菜</strong>（芋頭／南瓜／番茄／馬鈴薯）：有洞湯勺或細網較適合。</li>
       <li><strong>大骨湯油</strong>：淡黃色半透明浮油。用普通湯匙較快；有洞湯勺帶走較少湯汁。</li>
+      <li><strong>湯底雜料</strong>：麻辣湯可能有辣椒片、味噌湯可能有豆渣；在遊戲中用細網撈取，讓玩家練習從相似顏色中辨認。</li>
       <li><strong>冷藏凝油</strong>：挑戰中可花 3 秒模擬預先冷卻，讓浮油短暫凝固；凝固後用細網精準撈取。</li>
       <li>用錯工具會漏掉並扣分；冷藏後只能用細網撈油，其他工具會暫時鎖定。</li>
       <li>挑戰規則可選限時衝分、全清挑戰或無失誤挑戰；另有三種份量關卡。</li>
@@ -141,13 +143,15 @@
       <div class="count-chip">蔬菜 <strong id="vegCount">0</strong></div>
       <div class="count-chip">油 <strong id="oilCount">0</strong></div>
       <div class="count-chip">骨頭 <strong id="boneCount">0</strong></div>
+      <div class="count-chip">雜料 <strong id="debrisCount">0</strong></div>
     </div>
-    <canvas id="canvas" tabindex="0" role="img" aria-label="一鍋火鍋湯，裡面有肉沫、蔬菜、浮油和骨頭。使用方向鍵移動撈勺，按 Enter 撈取；也可直接點擊食材。"></canvas>
+    <canvas id="canvas" tabindex="0" role="img" aria-label="一鍋火鍋湯，裡面有肉沫、蔬菜、浮油、骨頭，以及依湯底出現的辣椒片或豆渣。使用方向鍵移動撈勺，按 Enter 撈取；也可直接點擊食材。"></canvas>
     <div class="tools">
       <button class="tool" data-tool="spoon" aria-pressed="false">🥄 普通湯匙</button>
       <button class="tool" data-tool="holey" aria-pressed="false">🕳️ 有洞湯勺</button>
       <button class="tool" data-tool="strainer" aria-pressed="true">🕸️ 細網撈沫勺</button>
     </div>
+    <div class="tool-key-hint">快捷鍵：<kbd>1</kbd> 普通湯匙 · <kbd>2</kbd> 有洞湯勺 · <kbd>3</kbd> 細網撈沫勺</div>
     <div class="tool-tip" id="toolTip" aria-live="polite">細網範圍小、帶走湯汁少，適合肉沫與凝固油渣。</div>
     <div class="method-row">
       <button id="chillBtn" class="method-btn">❄️ 冷藏凝油（預備）</button>
@@ -175,6 +179,6 @@
   </div>
 </div>
 
-<script src="game.js?v=20261027-4"></script>
+<script src="game.js?v=20261027-5"></script>
 </body>
 </html>
