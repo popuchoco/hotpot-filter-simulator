@@ -1,10 +1,12 @@
 <!DOCTYPE html>
+<!-- Modified 2026-10-27: refreshed responsive hotpot UI, beginner knowledge, and result stats. -->
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#2a140e">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="description" content="在 40 秒內用合適的火鍋工具撈起肉沫、蔬菜與浮油。">
 <title>火鍋湯底過濾挑戰</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,54 +19,96 @@
   <div id="menu" class="screen">
     <h1>火鍋湯底過濾挑戰</h1>
     <p class="subtitle">同一鍋大骨湯，時間內用對工具撈乾淨！</p>
+    <div class="menu-pot" aria-hidden="true"><span></span></div>
     <button id="startBtn" class="mode-btn">開始挑戰（40秒）</button>
-    <button id="howToBtn" class="secondary">怎麼玩</button>
+    <button id="howToBtn" class="secondary">玩法與火鍋小知識</button>
+    <p class="best-record">本機最高分 <strong id="bestScoreMenu">0</strong></p>
     <p class="credit">大骨湯油水 · 肉沫 · 蔬菜塊 · 可部署 GitHub Pages</p>
   </div>
 
   <!-- How to -->
   <div id="howto" class="screen hidden">
-    <h2>遊戲說明</h2>
+    <h2>玩法與火鍋小知識</h2>
     <ul>
       <li>同一鍋大骨湯，裡面混有<strong>肉沫</strong>、<strong>蔬菜塊</strong>與<strong>浮油</strong>。</li>
       <li><strong>肉沫</strong>：細碎，用濾網最有效。</li>
       <li><strong>蔬菜</strong>（芋頭／南瓜／番茄／馬鈴薯）：有洞湯勺或濾網較適合。</li>
-      <li><strong>大骨湯油</strong>：淡黃色半透明浮油，會慢慢聚集。用普通湯匙撈最穩，大片額外加分。油比紅油難辨識。</li>
+      <li><strong>大骨湯油</strong>：淡黃色半透明浮油，會慢慢聚集。用普通湯匙撈最穩，大片額外加分。</li>
       <li>用錯工具會漏掉並扣分。</li>
-      <li>時間到後顯示撈取成果統計。</li>
+      <li>點擊鍋面撈取；時間到後會顯示清潔度、剩餘食材與個人最高分。</li>
     </ul>
+    <p class="knowledge-intro">新手先記得：看形狀、挑工具、輕輕撈；不同湯底和想要的口感，做法也可以不同。</p>
+    <div class="knowledge-grid">
+      <article class="knowledge-card">
+        <div class="knowledge-icon">🥩</div>
+        <h3>肉沫與浮沫</h3>
+        <p>肉類加熱時，細碎肉屑與凝結的蛋白質會聚成浮沫。熬湯前先汆燙肉骨可帶走部分雜質；煮湯時讓湯保持微滾、別大力攪動，等浮沫聚起來再撈。</p>
+        <p class="tool-note"><strong>工具：</strong>小湯匙或細孔撈沫網。</p>
+      </article>
+      <article class="knowledge-card">
+        <div class="knowledge-icon">🟡</div>
+        <h3>浮油怎麼撈</h3>
+        <p>大片油花用普通湯匙較快；細小油渣可用濾油網。湯匙貼著表面慢慢移動，較不容易連湯一起舀走。</p>
+        <p class="tool-note"><strong>另一招：</strong>湯不急著喝時，可冷藏到油脂凝固後再撈。冷金屬湯匙也能讓油脂凝附，記得不要讓融冰滴進湯裡。</p>
+      </article>
+      <article class="knowledge-card">
+        <div class="knowledge-icon">🥄</div>
+        <h3>湯料和湯分開</h3>
+        <p>要撈出大塊食材、又想少帶走湯汁，可以用湯勺舀起，再用漏勺擋住食材，讓湯流回鍋裡。要整理整鍋湯，先撈出固體食材，再用細網過濾。</p>
+        <p class="tool-note"><strong>工具：</strong>湯勺＋漏勺，或細網／乾淨紗布。</p>
+      </article>
+      <article class="knowledge-card optional-tip">
+        <div class="knowledge-icon">🥚</div>
+        <h3>進階選修：蛋白澄清</h3>
+        <p>有些煮湯方法會用蛋白凝結時帶住細碎雜質，再把凝結物撈出。這會改變湯的口感，也要考慮蛋類過敏；一般火鍋不必特地使用。</p>
+      </article>
+    </div>
+    <details class="source-list">
+      <summary>參考文章（點開查看）</summary>
+      <ul>
+        <li><a href="https://www.ptt.cc/bbs/cookclub/M.1558249489.A.D7F.html" target="_blank" rel="noopener noreferrer">PTT CookClub：請教湯汁上的浮油濾油方式</a></li>
+        <li><a href="https://www.ptt.cc/bbs/EatToDie/M.1627616490.A.4B9.html" target="_blank" rel="noopener noreferrer">PTT EatToDie：鍋類吃到飽浮一層油，有什麼處理撇步嗎？</a></li>
+        <li><a href="https://www.mirrormedia.mg/external/setn_1751752" target="_blank" rel="noopener noreferrer">鏡週刊：吃火鍋 30 年沒發現，他 1 招秒分離湯料</a></li>
+        <li><a href="https://www.nownews.com/news/6779409" target="_blank" rel="noopener noreferrer">NOWnews：吃火鍋「多 1 動作」湯頭秒清澈</a></li>
+        <li><a href="https://icook.tw/blogs/138515" target="_blank" rel="noopener noreferrer">愛料理：煮好的湯表面有一層油渣，要如何去除？</a></li>
+        <li><a href="https://food.ltn.com.tw/article/9841" target="_blank" rel="noopener noreferrer">自由電子報食譜自由配：簡單 2 招快速濾掉湯中浮油、雜質</a></li>
+      </ul>
+      <p class="source-note">以上是家常技巧的入門整理；大火滾煮、吸附材料等做法會因湯底而異，本遊戲不把它們當成通用規則。</p>
+    </details>
     <button id="backMenu" class="secondary">返回</button>
   </div>
 
   <!-- Game -->
   <div id="game" class="screen hidden">
     <div class="timer-bar">
-      <div class="timer-label">剩餘時間</div>
-      <div id="timeDisplay" class="timer-big">40</div>
+      <div class="timer-head"><div class="timer-label">剩餘時間</div><div id="timeDisplay" class="timer-big">40</div></div>
+      <div class="timer-track" aria-hidden="true"><span id="timerFill"></span></div>
     </div>
     <div class="hud">
-      <div>分數：<span id="score">0</span></div>
-      <div>肉沫 <span id="meatCount">0</span></div>
-      <div>蔬菜 <span id="vegCount">0</span></div>
-      <div>油 <span id="oilCount">0</span></div>
+      <div class="score-chip">分數 <strong id="score">0</strong></div>
+      <div class="count-chip">肉沫 <strong id="meatCount">0</strong></div>
+      <div class="count-chip">蔬菜 <strong id="vegCount">0</strong></div>
+      <div class="count-chip">油 <strong id="oilCount">0</strong></div>
     </div>
-    <canvas id="canvas"></canvas>
+    <canvas id="canvas" role="img" aria-label="一鍋大骨湯，裡面有肉沫、蔬菜與浮油。點擊食材來撈取。"></canvas>
     <div class="tools">
-      <button class="tool" data-tool="spoon">🥄 普通湯匙</button>
-      <button class="tool" data-tool="holey">🕳️ 有洞湯勺</button>
-      <button class="tool" data-tool="strainer">🕸️ 濾網</button>
+      <button class="tool" data-tool="spoon" aria-pressed="false">🥄 普通湯匙</button>
+      <button class="tool" data-tool="holey" aria-pressed="false">🕳️ 有洞湯勺</button>
+      <button class="tool" data-tool="strainer" aria-pressed="true">🕸️ 濾網</button>
     </div>
     <div class="controls">
-      <button id="pauseBtn">暫停</button>
+      <button id="pauseBtn" aria-pressed="false">暫停</button>
       <button id="endBtn">結束</button>
     </div>
-    <div id="hint" class="hint"></div>
+    <div id="hint" class="hint" role="status" aria-live="polite"></div>
   </div>
 
   <!-- Result -->
   <div id="result" class="screen hidden">
-    <h2>時間到！撈取成果</h2>
+    <h2>本局結算｜撈取成果</h2>
     <div class="result-score">分數：<span id="finalScore">0</span></div>
+    <div class="result-cleanliness">湯底清潔度 <strong id="cleanliness">0%</strong></div>
+    <p id="personalBest" class="best-record"></p>
     <div class="result-stats" id="resultStats"></div>
     <div id="resultComment"></div>
     <button id="retryBtn">再玩一次</button>
