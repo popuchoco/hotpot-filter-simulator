@@ -6,12 +6,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#2a140e">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="description" content="在不限時練習或多種限時關卡中，學習用合適的火鍋工具撈起肉沫、蔬菜與浮油。">
+<meta name="description" content="挑戰多種火鍋湯底、規則和工具，撈起肉沫、蔬菜、浮油與骨頭；也可挑戰每日固定盤面。">
 <title>火鍋湯底過濾挑戰</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261027-2">
+<link rel="stylesheet" href="style.css?v=20261027-4">
 </head>
 <body>
 <div id="app">
@@ -28,11 +28,40 @@
         <option value="feast">熱鬧滿鍋｜35 秒</option>
       </select>
       <p id="stageDescription" class="stage-description">標準份量，熟悉三種食材與工具搭配。</p>
+      <label for="ruleSelect">挑戰規則</label>
+      <select id="ruleSelect">
+        <option value="score">限時衝分｜時間內盡量撈取</option>
+        <option value="clear">全清挑戰｜清空整鍋才算成功</option>
+        <option value="perfect">無失誤挑戰｜工具失誤即結束</option>
+      </select>
+      <p id="ruleDescription" class="stage-description">時間內盡量撈取，挑戰更高分數。</p>
+      <label for="brothSelect">湯底與事件</label>
+      <select id="brothSelect">
+        <option value="clear">清湯｜油花清楚、湯流平穩</option>
+        <option value="mala">麻辣｜沸騰較快、油花容易聚集</option>
+        <option value="miso">味噌｜流動較慢、油花聚集較慢</option>
+      </select>
+      <p id="brothDescription" class="stage-description">清湯顏色較淡，方便辨認浮油。</p>
       <button id="startBtn" class="mode-btn">開始限時挑戰</button>
+      <button id="dailyBtn" class="secondary mode-btn">今日固定盤面挑戰</button>
       <button id="practiceBtn" class="secondary mode-btn">練習辨認（不限時）</button>
     </section>
+    <section class="accessibility-panel" aria-label="顯示與操作設定">
+      <strong>顯示與操作</strong>
+      <label><input type="checkbox" id="contrastToggle"> 高對比</label>
+      <label><input type="checkbox" id="motionToggle"> 減少動態效果</label>
+      <label><input type="checkbox" id="soundToggle"> 音效</label>
+      <p>鍵盤：1–3 選工具、方向鍵／WASD 移動撈勺、Enter／空白鍵撈取、P 暫停。</p>
+    </section>
+    <details class="achievement-panel">
+      <summary>成就與鍋具外觀</summary>
+      <label for="skinSelect">鍋具外觀</label>
+      <select id="skinSelect" aria-label="選擇已解鎖的鍋具外觀"></select>
+      <div id="achievementList" class="achievement-list" aria-live="polite"></div>
+    </details>
     <button id="howToBtn" class="secondary">玩法與火鍋小知識</button>
-    <p class="best-record">本機最高分 <strong id="bestScoreMenu">0</strong></p>
+    <p class="best-record">所選關卡本機最高分 <strong id="bestScoreMenu">0</strong></p>
+    <button id="resetRecordsBtn" class="secondary">清除本機紀錄</button>
     <p class="credit">大骨湯油水 · 肉沫 · 蔬菜塊 · 可部署 GitHub Pages</p>
   </div>
 
@@ -45,9 +74,13 @@
       <li><strong>蔬菜</strong>（芋頭／南瓜／番茄／馬鈴薯）：有洞湯勺或細網較適合。</li>
       <li><strong>大骨湯油</strong>：淡黃色半透明浮油。用普通湯匙較快；有洞湯勺帶走較少湯汁。</li>
       <li><strong>冷藏凝油</strong>：挑戰中可花 3 秒模擬預先冷卻，讓浮油短暫凝固；凝固後用細網精準撈取。</li>
-      <li>用錯工具會漏掉並扣分。</li>
-      <li>挑戰有三種份量關卡；練習模式不限時，可熟悉工具與冷藏凝油方法。</li>
+      <li>用錯工具會漏掉並扣分；冷藏後只能用細網撈油，其他工具會暫時鎖定。</li>
+      <li>挑戰規則可選限時衝分、全清挑戰或無失誤挑戰；另有三種份量關卡。</li>
+      <li>清湯、麻辣、味噌的湯色、湯流速度和油花聚集速度不同；沸騰湯流會定時出現。</li>
+      <li>骨頭體積較大，需要用有洞湯勺撈兩次；連續使用普通湯匙會增加湯汁損失。</li>
+      <li>每日挑戰在同一天使用固定盤面與湯底，結算可複製分享連結。</li>
       <li>點擊鍋面撈取；結算會顯示清潔度、剩餘食材、帶走湯汁與個人最高分。</li>
+      <li>鍵盤可用 1–3 選工具、方向鍵／WASD 移動、Enter／空白鍵撈取、P 暫停。</li>
     </ul>
     <p class="knowledge-intro">新手先記得：看形狀、挑工具、輕輕撈；不同湯底和想要的口感，做法也可以不同。</p>
     <div class="knowledge-grid">
@@ -101,13 +134,15 @@
       <div class="timer-head"><div class="timer-label" id="timerLabel">剩餘時間</div><div id="timeDisplay" class="timer-big">40</div></div>
       <div class="timer-track" aria-hidden="true"><span id="timerFill"></span></div>
     </div>
+    <div id="eventBanner" class="event-banner" role="status" aria-live="polite">湯面平穩</div>
     <div class="hud">
       <div class="score-chip">分數 <strong id="score">0</strong></div>
       <div class="count-chip">肉沫 <strong id="meatCount">0</strong></div>
       <div class="count-chip">蔬菜 <strong id="vegCount">0</strong></div>
       <div class="count-chip">油 <strong id="oilCount">0</strong></div>
+      <div class="count-chip">骨頭 <strong id="boneCount">0</strong></div>
     </div>
-    <canvas id="canvas" role="img" aria-label="一鍋大骨湯，裡面有肉沫、蔬菜與浮油。點擊食材來撈取。"></canvas>
+    <canvas id="canvas" tabindex="0" role="img" aria-label="一鍋火鍋湯，裡面有肉沫、蔬菜、浮油和骨頭。使用方向鍵移動撈勺，按 Enter 撈取；也可直接點擊食材。"></canvas>
     <div class="tools">
       <button class="tool" data-tool="spoon" aria-pressed="false">🥄 普通湯匙</button>
       <button class="tool" data-tool="holey" aria-pressed="false">🕳️ 有洞湯勺</button>
@@ -134,11 +169,12 @@
     <div class="result-stats" id="resultStats"></div>
     <p id="resultLabel" class="result-label"></p>
     <div id="resultComment"></div>
+    <button id="shareBtn" class="secondary hidden">複製每日挑戰分享連結</button>
     <button id="retryBtn">再玩一次</button>
     <button id="menuBtn" class="secondary">回選單</button>
   </div>
 </div>
 
-<script src="game.js?v=20261027-2"></script>
+<script src="game.js?v=20261027-4"></script>
 </body>
 </html>

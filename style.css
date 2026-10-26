@@ -60,6 +60,17 @@ button:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 3px; }
 .mode-panel select:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 2px; }
 .stage-description { min-height: 1.4em; margin: 0 0 10px; color: #cdbba2; font-size: .78rem; }
 .mode-panel .secondary { margin-top: 9px; }
+.accessibility-panel, .achievement-panel { width: min(100%, 380px); margin: 10px auto 0; padding: 10px 13px; text-align: left; border: 1px solid rgba(255,228,190,.12); border-radius: 13px; background: rgba(29,21,17,.7); color: #e6d7c3; font-size: .8rem; }
+.accessibility-panel strong { display: block; color: #ffd493; margin-bottom: 5px; }
+.accessibility-panel label { display: inline-flex; align-items: center; gap: 5px; margin: 3px 12px 3px 0; cursor: pointer; }
+.accessibility-panel input { width: 18px; height: 18px; accent-color: #ffd493; }
+.accessibility-panel p { color: #cdbba2; font-size: .74rem; line-height: 1.5; margin: 4px 0 0; }
+.achievement-panel summary { cursor: pointer; color: #ffd493; font-weight: 700; }
+.achievement-panel > label { display: block; margin: 10px 0 5px; }
+.achievement-panel select { width: 100%; padding: 9px 10px; border: 1px solid rgba(255,232,198,.22); border-radius: 9px; color: var(--cream); background: #32251d; font: inherit; }
+.achievement-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin-top: 9px; }
+.achievement-item { padding: 7px 8px; border-radius: 8px; background: rgba(255,255,255,.05); color: #b9aa93; line-height: 1.35; }
+.achievement-item.unlocked { color: #ffe2a9; background: rgba(215,148,72,.18); }
 
 /* A small, CSS-drawn broth-pan preview on the menu. */
 .menu-pot { position: relative; width: min(74vw, 315px); height: min(43vw, 180px); margin: 4px auto 15px; }
@@ -112,8 +123,10 @@ button:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 3px; }
 .timer-big.warn { color: #ff775a; animation: pulse .6s infinite alternate; }
 .timer-track { width: 100%; height: 4px; overflow: hidden; background: rgba(255,255,255,.12); border-radius: 99px; }
 .timer-track span { display: block; width: 100%; height: 100%; background: linear-gradient(90deg, #ffbd61, #df6341); border-radius: inherit; transform-origin: left center; transition: transform .1s linear; }
+.event-banner { min-height: 1.5em; margin: 0 auto 5px; color: #ffe1a8; font-size: .78rem; font-weight: 700; }
+.event-banner.active { color: #fff3d0; text-shadow: 0 0 12px rgba(255,152,67,.8); }
 @keyframes pulse { to { transform: scale(1.06); } }
-.hud { display: grid; grid-template-columns: 1.2fr repeat(3, 1fr); gap: 5px; align-items: center; margin-bottom: 5px; }
+.hud { display: grid; grid-template-columns: 1.25fr repeat(4, 1fr); gap: 5px; align-items: center; margin-bottom: 5px; }
 .hud > div { min-width: 0; padding: 6px 4px; border-radius: 9px; background: rgba(38,27,22,.78); color: #ddcbb2; font-size: clamp(.7rem, 2.5vw, .82rem); white-space: nowrap; }
 .hud strong { color: #fff4de; margin-left: 2px; font-variant-numeric: tabular-nums; }
 .score-chip strong { color: #ffd17c; }
@@ -132,6 +145,7 @@ button:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 3px; }
 .tools { display: flex; gap: 7px; margin: 5px 0 8px; justify-content: center; }
 .tool { flex: 1; padding: 8px 4px; font-size: clamp(.69rem, 2.8vw, .82rem); border-radius: 10px; background: linear-gradient(180deg, #514136, #312720); box-shadow: 0 3px 0 #1c1511; }
 .tool.active { color: #2a1d13; background: linear-gradient(180deg, #ffdb9d, #d99a52); box-shadow: 0 3px 0 #8b5729; }
+.tool:disabled { opacity: .42; filter: grayscale(.7); cursor: not-allowed; transform: none; }
 .tool-tip { min-height: 1.25em; margin: 0 0 5px; color: #d9c6a9; font-size: .73rem; }
 .method-row { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; margin-bottom: 5px; }
 .method-btn { padding: 7px 11px; font-size: .76rem; background: linear-gradient(180deg, #627b84, #374f58); box-shadow: 0 3px 0 #243941; }
@@ -148,6 +162,16 @@ button:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 3px; }
 .result-label { margin: 0 0 8px; color: #dfc8a5; font-size: .9rem; }
 .result-stats { background: rgba(25,18,15,.68); border: 1px solid rgba(255,231,196,.09); border-radius: 13px; padding: 12px 16px; margin-bottom: 13px; text-align: left; line-height: 1.75; font-size: .92rem; }
 #resultComment { margin-bottom: 14px; line-height: 1.5; color: #e8d6bf; }
+.result-share { width: min(100%, 380px); }
+.high-contrast { --cream: #fff; --muted: #fff; --gold: #ffe467; --panel: rgba(0,0,0,.97); }
+.high-contrast body { background: #000; color: #fff; }
+.high-contrast button, .high-contrast .mode-panel, .high-contrast .accessibility-panel, .high-contrast .achievement-panel, .high-contrast .result-stats { border-color: #fff; }
+.high-contrast .stage-description, .high-contrast .tool-tip, .high-contrast .method-row span, .high-contrast .hint, .high-contrast .timer-label { color: #fff; opacity: 1; }
+.high-contrast #canvas { outline: 2px solid #fff; }
+.high-contrast .hud > div { background: #000; border: 1px solid #fff; color: #fff; }
+.high-contrast .hud strong, .high-contrast .score-chip strong, .high-contrast .timer-big { color: #fff36b; }
+.high-contrast .event-banner { color: #fff36b; text-shadow: none; }
+.reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 
 @media (max-height: 720px) {
   body { align-items: flex-start; }
@@ -160,6 +184,7 @@ button:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 3px; }
   .tool { min-height: 52px; line-height: 1.2; }
   .method-row { align-items: flex-start; }
   .method-row span { max-width: 42%; padding-top: 5px; }
+  .achievement-list { grid-template-columns: 1fr; }
 }
 @media (min-width: 700px) and (min-height: 700px) {
   #app { width: min(100%, 700px); }
