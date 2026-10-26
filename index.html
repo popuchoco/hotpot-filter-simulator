@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<!-- Modified 2026-10-27: refreshed responsive hotpot UI, beginner knowledge, and result stats. -->
+<!-- Modified 2026-10-27: added practice, staged challenges, tool strategy, and method feedback. -->
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#2a140e">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="description" content="在 40 秒內用合適的火鍋工具撈起肉沫、蔬菜與浮油。">
+<meta name="description" content="在不限時練習或多種限時關卡中，學習用合適的火鍋工具撈起肉沫、蔬菜與浮油。">
 <title>火鍋湯底過濾挑戰</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,7 +20,17 @@
     <h1>火鍋湯底過濾挑戰</h1>
     <p class="subtitle">同一鍋大骨湯，時間內用對工具撈乾淨！</p>
     <div class="menu-pot" aria-hidden="true"><span></span></div>
-    <button id="startBtn" class="mode-btn">開始挑戰（40秒）</button>
+    <section class="mode-panel" aria-label="選擇遊戲模式">
+      <label for="stageSelect">挑戰關卡</label>
+      <select id="stageSelect">
+        <option value="starter">新手小鍋｜50 秒</option>
+        <option value="home" selected>家常火鍋｜40 秒</option>
+        <option value="feast">熱鬧滿鍋｜35 秒</option>
+      </select>
+      <p id="stageDescription" class="stage-description">標準份量，熟悉三種食材與工具搭配。</p>
+      <button id="startBtn" class="mode-btn">開始限時挑戰</button>
+      <button id="practiceBtn" class="secondary mode-btn">練習辨認（不限時）</button>
+    </section>
     <button id="howToBtn" class="secondary">玩法與火鍋小知識</button>
     <p class="best-record">本機最高分 <strong id="bestScoreMenu">0</strong></p>
     <p class="credit">大骨湯油水 · 肉沫 · 蔬菜塊 · 可部署 GitHub Pages</p>
@@ -31,11 +41,13 @@
     <h2>玩法與火鍋小知識</h2>
     <ul>
       <li>同一鍋大骨湯，裡面混有<strong>肉沫</strong>、<strong>蔬菜塊</strong>與<strong>浮油</strong>。</li>
-      <li><strong>肉沫</strong>：細碎，用濾網最有效。</li>
-      <li><strong>蔬菜</strong>（芋頭／南瓜／番茄／馬鈴薯）：有洞湯勺或濾網較適合。</li>
-      <li><strong>大骨湯油</strong>：淡黃色半透明浮油，會慢慢聚集。用普通湯匙撈最穩，大片額外加分。</li>
+      <li><strong>肉沫</strong>：細碎，用細網撈沫勺最精準。</li>
+      <li><strong>蔬菜</strong>（芋頭／南瓜／番茄／馬鈴薯）：有洞湯勺或細網較適合。</li>
+      <li><strong>大骨湯油</strong>：淡黃色半透明浮油。用普通湯匙較快；有洞湯勺帶走較少湯汁。</li>
+      <li><strong>冷藏凝油</strong>：挑戰中可花 3 秒模擬預先冷卻，讓浮油短暫凝固；凝固後用細網精準撈取。</li>
       <li>用錯工具會漏掉並扣分。</li>
-      <li>點擊鍋面撈取；時間到後會顯示清潔度、剩餘食材與個人最高分。</li>
+      <li>挑戰有三種份量關卡；練習模式不限時，可熟悉工具與冷藏凝油方法。</li>
+      <li>點擊鍋面撈取；結算會顯示清潔度、剩餘食材、帶走湯汁與個人最高分。</li>
     </ul>
     <p class="knowledge-intro">新手先記得：看形狀、挑工具、輕輕撈；不同湯底和想要的口感，做法也可以不同。</p>
     <div class="knowledge-grid">
@@ -43,19 +55,24 @@
         <div class="knowledge-icon">🥩</div>
         <h3>肉沫與浮沫</h3>
         <p>肉類加熱時，細碎肉屑與凝結的蛋白質會聚成浮沫。熬湯前先汆燙肉骨可帶走部分雜質；煮湯時讓湯保持微滾、別大力攪動，等浮沫聚起來再撈。</p>
-        <p class="tool-note"><strong>工具：</strong>小湯匙或細孔撈沫網。</p>
+        <p class="tool-note"><strong>工具：</strong>細網撈沫勺；範圍較小但較精準。</p>
       </article>
       <article class="knowledge-card">
         <div class="knowledge-icon">🟡</div>
         <h3>浮油怎麼撈</h3>
         <p>大片油花用普通湯匙較快；細小油渣可用濾油網。湯匙貼著表面慢慢移動，較不容易連湯一起舀走。</p>
-        <p class="tool-note"><strong>另一招：</strong>湯不急著喝時，可冷藏到油脂凝固後再撈。冷金屬湯匙也能讓油脂凝附，記得不要讓融冰滴進湯裡。</p>
+        <p class="tool-note"><strong>另一招：</strong>湯不急著喝時，可冷藏到油脂凝固後再撈。冷金屬湯匙也能讓油脂凝附，記得不要讓融冰滴進湯裡。遊戲中的冷藏預備會縮時模擬這個步驟。</p>
       </article>
       <article class="knowledge-card">
         <div class="knowledge-icon">🥄</div>
         <h3>湯料和湯分開</h3>
         <p>要撈出大塊食材、又想少帶走湯汁，可以用湯勺舀起，再用漏勺擋住食材，讓湯流回鍋裡。要整理整鍋湯，先撈出固體食材，再用細網過濾。</p>
         <p class="tool-note"><strong>工具：</strong>湯勺＋漏勺，或細網／乾淨紗布。</p>
+      </article>
+      <article class="knowledge-card">
+        <div class="knowledge-icon">🧰</div>
+        <h3>三種工具各有所長</h3>
+        <p><strong>普通湯匙</strong>撈面積較大、速度快，但容易連湯帶走；<strong>有洞湯勺</strong>適合蔬菜和未凝固浮油，湯會從孔洞流回；<strong>細網撈沫勺</strong>最適合肉沫與凝固油渣，但接觸範圍較小，需要瞄準。</p>
       </article>
       <article class="knowledge-card optional-tip">
         <div class="knowledge-icon">🥚</div>
@@ -81,7 +98,7 @@
   <!-- Game -->
   <div id="game" class="screen hidden">
     <div class="timer-bar">
-      <div class="timer-head"><div class="timer-label">剩餘時間</div><div id="timeDisplay" class="timer-big">40</div></div>
+      <div class="timer-head"><div class="timer-label" id="timerLabel">剩餘時間</div><div id="timeDisplay" class="timer-big">40</div></div>
       <div class="timer-track" aria-hidden="true"><span id="timerFill"></span></div>
     </div>
     <div class="hud">
@@ -94,7 +111,12 @@
     <div class="tools">
       <button class="tool" data-tool="spoon" aria-pressed="false">🥄 普通湯匙</button>
       <button class="tool" data-tool="holey" aria-pressed="false">🕳️ 有洞湯勺</button>
-      <button class="tool" data-tool="strainer" aria-pressed="true">🕸️ 濾網</button>
+      <button class="tool" data-tool="strainer" aria-pressed="true">🕸️ 細網撈沫勺</button>
+    </div>
+    <div class="tool-tip" id="toolTip" aria-live="polite">細網範圍小、帶走湯汁少，適合肉沫與凝固油渣。</div>
+    <div class="method-row">
+      <button id="chillBtn" class="method-btn">❄️ 冷藏凝油（預備）</button>
+      <span id="methodStatus">讓浮油凝固後，再用細網撈取。</span>
     </div>
     <div class="controls">
       <button id="pauseBtn" aria-pressed="false">暫停</button>
@@ -110,6 +132,7 @@
     <div class="result-cleanliness">湯底清潔度 <strong id="cleanliness">0%</strong></div>
     <p id="personalBest" class="best-record"></p>
     <div class="result-stats" id="resultStats"></div>
+    <p id="resultLabel" class="result-label"></p>
     <div id="resultComment"></div>
     <button id="retryBtn">再玩一次</button>
     <button id="menuBtn" class="secondary">回選單</button>
