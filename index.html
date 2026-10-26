@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#2a140e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>火鍋湯底過濾挑戰</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <!-- Menu -->
+  <div id="menu" class="screen">
+    <h1>火鍋湯底過濾挑戰</h1>
+    <p class="subtitle">同一鍋大骨湯，時間內用對工具撈乾淨！</p>
+    <button id="startBtn" class="mode-btn">開始挑戰（40秒）</button>
+    <button id="howToBtn" class="secondary">怎麼玩</button>
+    <p class="credit">大骨湯油水 · 肉沫 · 蔬菜塊 · 可部署 GitHub Pages</p>
+  </div>
+
+  <!-- How to -->
+  <div id="howto" class="screen hidden">
+    <h2>遊戲說明</h2>
+    <ul>
+      <li>同一鍋大骨湯，裡面混有<strong>肉沫</strong>、<strong>蔬菜塊</strong>與<strong>浮油</strong>。</li>
+      <li><strong>肉沫</strong>：細碎，用濾網最有效。</li>
+      <li><strong>蔬菜</strong>（芋頭／南瓜／番茄／馬鈴薯）：有洞湯勺或濾網較適合。</li>
+      <li><strong>大骨湯油</strong>：淡黃色半透明浮油，會慢慢聚集。用普通湯匙撈最穩，大片額外加分。油比紅油難辨識。</li>
+      <li>用錯工具會漏掉並扣分。</li>
+      <li>時間到後顯示撈取成果統計。</li>
+    </ul>
+    <button id="backMenu" class="secondary">返回</button>
+  </div>
+
+  <!-- Game -->
+  <div id="game" class="screen hidden">
+    <div class="timer-bar">
+      <div class="timer-label">剩餘時間</div>
+      <div id="timeDisplay" class="timer-big">40</div>
+    </div>
+    <div class="hud">
+      <div>分數：<span id="score">0</span></div>
+      <div>肉沫 <span id="meatCount">0</span></div>
+      <div>蔬菜 <span id="vegCount">0</span></div>
+      <div>油 <span id="oilCount">0</span></div>
+    </div>
+    <canvas id="canvas"></canvas>
+    <div class="tools">
+      <button class="tool" data-tool="spoon">🥄 普通湯匙</button>
+      <button class="tool" data-tool="holey">🕳️ 有洞湯勺</button>
+      <button class="tool" data-tool="strainer">🕸️ 濾網</button>
+    </div>
+    <div class="controls">
+      <button id="pauseBtn">暫停</button>
+      <button id="endBtn">結束</button>
+    </div>
+    <div id="hint" class="hint"></div>
+  </div>
+
+  <!-- Result -->
+  <div id="result" class="screen hidden">
+    <h2>時間到！撈取成果</h2>
+    <div class="result-score">分數：<span id="finalScore">0</span></div>
+    <div class="result-stats" id="resultStats"></div>
+    <div id="resultComment"></div>
+    <button id="retryBtn">再玩一次</button>
+    <button id="menuBtn" class="secondary">回選單</button>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
