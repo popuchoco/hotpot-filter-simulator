@@ -1,4 +1,7 @@
 // Game state, input, UI, persistence, and score flow; rendering/physics are separate scripts.
+if (typeof drawSoup !== 'function' || typeof drawParticles !== 'function' || typeof updatePhysics !== 'function') {
+  throw new Error('Game scripts are missing or out of order: load renderer.js and physics.js before game.js.');
+}
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const scoreEl = document.getElementById('score');
@@ -54,6 +57,7 @@ const VEG_SOUP_LOSS_MULTIPLIER = 1.5;
 const SPOON_STREAK_SOUP_LOSS_INCREMENT = .25;
 const SPOON_STREAK_WINDOW_MS = 2_000;
 const SPOON_STREAK_MAX = 4;
+const PARTICLE_RENDER_TYPES = Object.freeze(['oil', 'meat', 'veg', 'bone', 'debris']);
 const WRONG_TOOL_REMOVE_CHANCE = .45;
 const WRONG_TOOL_PENALTY_PER_RADIUS = .8;
 const WRONG_TOOL_BASE_PENALTY = 2;
@@ -152,6 +156,7 @@ let lastFrameTime = null;
 let running = false;
 let gameEnded = false;
 let particles = [];
+let particleGroups = createParticleGroups();
 let canvasWidth = 0;
 let canvasHeight = 0;
 let pixelRatio = 1;
@@ -193,6 +198,16 @@ let lastCountdownSecond = null;
 let spoonStreak = 0;
 let lastSpoonUse = null;
 let selectedSkin = 'steel';
+
+function createParticleGroups() {
+  return Object.fromEntries(PARTICLE_RENDER_TYPES.map(type => [type, []]));
+}
+
+function refreshParticleGroups() {
+  const groups = createParticleGroups();
+  for (const particle of particles) groups[particle.type]?.push(particle);
+  particleGroups = groups;
+}
 
 bestScoreMenuEl.textContent = bestScore;
 initializeSettings();
@@ -482,6 +497,7 @@ function spawn() {
   // Broth-specific debris starts sparse and may drift in during later boil events.
   brothDebrisSpawned = 0;
   spawnBrothDebris(currentStageId === 'feast' ? 7 : 4);
+  refreshParticleGroups();
 }
 
 function spawnBrothDebris(requestedCount = 1) {
@@ -590,6 +606,7 @@ function tryScoop() {
   });
 
   [...remove].sort((a, b) => b - a).forEach(index => particles.splice(index, 1));
+  if (remove.size) refreshParticleGroups();
   score = Math.max(0, score + gained - lost);
   scoreEl.textContent = score;
   updateCounts();
@@ -718,12 +735,28 @@ function showHint(message) {
   }, 1500);
 }
 
-function playSound(kind) {
-  if (!soundEnabled) return;
+function prepareAudioContextFromGesture() {
+  if (!soundEnabled) return false;
   try {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return;
+    if (!AudioContextClass) return false;
     audioContext ||= new AudioContextClass();
+    if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function unlockAudioFromGesture() {
+  if (!prepareAudioContextFromGesture()) return;
+  window.removeEventListener('pointerdown', unlockAudioFromGesture, true);
+  window.removeEventListener('keydown', unlockAudioFromGesture, true);
+}
+
+function playSound(kind) {
+  if (!soundEnabled || !audioContext) return;
+  try {
     if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
     const notes = kind === 'scoop' ? [660, 880]
       : kind === 'chill' ? [520, 740, 980]
@@ -1120,7 +1153,7 @@ motionToggle.addEventListener('change', () => {
 document.getElementById('soundToggle').addEventListener('change', event => {
   soundEnabled = event.target.checked;
   saveSettings();
-  if (soundEnabled) playSound('scoop');
+  if (soundEnabled && prepareAudioContextFromGesture()) playSound('scoop');
 });
 skinSelect.addEventListener('change', () => {
   selectedSkin = skinSelect.value in POT_SKINS ? skinSelect.value : 'steel';
@@ -1140,6 +1173,9 @@ canvas.addEventListener('pointerdown', event => {
   mouse.y = event.clientY - rect.top;
   tryScoop();
 });
+// AudioContext is created only after a real user gesture, and only when sound is enabled.
+window.addEventListener('pointerdown', unlockAudioFromGesture, true);
+window.addEventListener('keydown', unlockAudioFromGesture, true);
 canvas.addEventListener('pointermove', event => {
   const rect = canvas.getBoundingClientRect();
   mouse.x = event.clientX - rect.left;

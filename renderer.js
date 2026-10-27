@@ -1,4 +1,36 @@
-// Canvas rendering functions; game state is supplied by game.js.
+// Canvas rendering functions. Depends on game.js globals: ctx/canvas dimensions,
+// particles/particleGroups, mouse, brothId/BROTHS, boilingNow, reduceMotion,
+// highContrast, selectedSkin/POT_SKINS, currentTool/TOOL_CONFIG, and isOilChilled().
+const POT_GEOMETRY = Object.freeze({
+  outerRadiusX: .42,
+  outerRadiusY: .93,
+  basinInset: .925,
+  soupRadiusX: .875,
+  soupRadiusY: .855
+});
+const RENDER_DETAILS = Object.freeze({
+  simmerBubbleCount: 8,
+  flowRingCount: 3,
+  tomatoPetalCount: 10,
+  simmer: Object.freeze({
+    phaseRateBase: .35, phaseRateStep: .015, phaseOffsetStep: 1.7,
+    xBase: .2, xStep: .19, xPattern: 3,
+    yBase: .16, yStep: .14, yPattern: 4,
+    radiusBase: 1.4, radiusStep: 1.1
+  })
+});
+const VEGETABLE_SHAPES = Object.freeze({
+  pumpkin: Object.freeze({ radiusX: 1.03, radiusY: .8 }),
+  tomato: Object.freeze({ innerRadius: .78, verticalScale: .85 }),
+  default: Object.freeze({ radiusX: .94, radiusY: .78, rotation: .14 })
+});
+const POT_BODY_GRADIENT_OFFSETS = Object.freeze([0, .06, .14, .24, .29, .76, .93, 1]);
+const GRADIENT_STOPS = Object.freeze({
+  rim: Object.freeze([[0, '#f9f4e8'], [.12, '#5e5a52'], [.29, '#ded7c8'], [.46, '#58544c'], [.7, '#f1e8d7'], [1, '#504c44']]),
+  interior: Object.freeze([[0, '#f9f5e8'], [.12, '#59564f'], [.28, '#d5cdbb'], [.42, '#777164'], [.65, '#282724'], [1, '#131312']]),
+  broth: Object.freeze([0, .36, .72, 1])
+});
+
 function drawHandle(cx, cy, rx, ry, side) {
   const hx = cx + side * rx * 1.06;
   const hy = cy + ry * 0.04;
@@ -36,8 +68,8 @@ function drawSoup(now = 0) {
   const cx = w / 2;
   const cy = h / 2;
   const size = Math.min(w, h);
-  const rx = size * 0.42;
-  const ry = rx * 0.93;
+  const rx = size * POT_GEOMETRY.outerRadiusX;
+  const ry = rx * POT_GEOMETRY.outerRadiusY;
 
   const backdrop = ctx.createRadialGradient(cx, cy, size * 0.1, cx, cy, size * 0.72);
   backdrop.addColorStop(0, '#3e3329');
@@ -55,7 +87,7 @@ function drawSoup(now = 0) {
   ctx.shadowOffsetY = size * 0.035;
   const potBody = ctx.createLinearGradient(cx - rx, cy - ry, cx + rx * 0.45, cy + ry);
   const potStops = POT_SKINS[selectedSkin].outer;
-  [0, .06, .14, .24, .29, .76, .93, 1].forEach((offset, index) => potBody.addColorStop(offset, potStops[index]));
+  POT_BODY_GRADIENT_OFFSETS.forEach((offset, index) => potBody.addColorStop(offset, potStops[index]));
   ctx.fillStyle = potBody;
   ctx.beginPath();
   ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
@@ -63,12 +95,7 @@ function drawSoup(now = 0) {
   ctx.restore();
 
   const rimGradient = ctx.createLinearGradient(cx - rx, cy - ry, cx + rx, cy + ry);
-  rimGradient.addColorStop(0, '#f9f4e8');
-  rimGradient.addColorStop(0.12, '#5e5a52');
-  rimGradient.addColorStop(0.29, '#ded7c8');
-  rimGradient.addColorStop(0.46, '#58544c');
-  rimGradient.addColorStop(0.7, '#f1e8d7');
-  rimGradient.addColorStop(1, '#504c44');
+  GRADIENT_STOPS.rim.forEach(([offset, color]) => rimGradient.addColorStop(offset, color));
   ctx.strokeStyle = 'rgba(10,9,8,.8)';
   ctx.lineWidth = Math.max(8, size * 0.022);
   ctx.beginPath();
@@ -85,22 +112,17 @@ function drawSoup(now = 0) {
   ctx.ellipse(cx, cy, rx * 0.932, ry * 0.932, 0, 0, Math.PI * 2);
   ctx.stroke();
 
-  const basinX = rx * 0.925;
-  const basinY = ry * 0.925;
+  const basinX = rx * POT_GEOMETRY.basinInset;
+  const basinY = ry * POT_GEOMETRY.basinInset;
   const inside = ctx.createRadialGradient(cx - rx * 0.24, cy - ry * 0.27, size * 0.04, cx, cy, rx * 1.03);
-  inside.addColorStop(0, '#f9f5e8');
-  inside.addColorStop(0.12, '#59564f');
-  inside.addColorStop(0.28, '#d5cdbb');
-  inside.addColorStop(0.42, '#777164');
-  inside.addColorStop(0.65, '#282724');
-  inside.addColorStop(1, '#131312');
+  GRADIENT_STOPS.interior.forEach(([offset, color]) => inside.addColorStop(offset, color));
   ctx.fillStyle = inside;
   ctx.beginPath();
   ctx.ellipse(cx, cy, basinX, basinY, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  const soupRx = rx * 0.875;
-  const soupRy = ry * 0.855;
+  const soupRx = rx * POT_GEOMETRY.soupRadiusX;
+  const soupRy = ry * POT_GEOMETRY.soupRadiusY;
   ctx.save();
   ctx.beginPath();
   ctx.ellipse(cx, cy, soupRx, soupRy, 0, 0, Math.PI * 2);
@@ -108,10 +130,7 @@ function drawSoup(now = 0) {
 
   const broth = ctx.createRadialGradient(cx - soupRx * 0.28, cy - soupRy * 0.39, size * 0.04, cx, cy, soupRx * 1.25);
   const brothColors = BROTHS[brothId].colors;
-  broth.addColorStop(0, brothColors[0]);
-  broth.addColorStop(0.36, brothColors[1]);
-  broth.addColorStop(0.72, brothColors[2]);
-  broth.addColorStop(1, brothColors[3]);
+  GRADIENT_STOPS.broth.forEach((offset, index) => broth.addColorStop(offset, brothColors[index]));
   ctx.fillStyle = broth;
   ctx.fillRect(cx - soupRx, cy - soupRy, soupRx * 2, soupRy * 2);
 
@@ -123,11 +142,12 @@ function drawSoup(now = 0) {
 
   // A few slow surface rings and bubbles give the broth a gentle simmer.
   const t = (reduceMotion ? 0 : now) / 1000;
-  for (let i = 0; i < (reduceMotion ? 0 : 8); i++) {
-    const phase = t * (0.35 + i * 0.015) + i * 1.7;
-    const bx = cx + Math.sin(phase) * soupRx * (0.2 + (i % 3) * 0.19);
-    const by = cy + Math.cos(phase * 0.83) * soupRy * (0.16 + (i % 4) * 0.14);
-    const br = 1.4 + (i % 3) * 1.1;
+  const simmer = RENDER_DETAILS.simmer;
+  for (let i = 0; i < (reduceMotion ? 0 : RENDER_DETAILS.simmerBubbleCount); i++) {
+    const phase = t * (simmer.phaseRateBase + i * simmer.phaseRateStep) + i * simmer.phaseOffsetStep;
+    const bx = cx + Math.sin(phase) * soupRx * (simmer.xBase + (i % simmer.xPattern) * simmer.xStep);
+    const by = cy + Math.cos(phase * 0.83) * soupRy * (simmer.yBase + (i % simmer.yPattern) * simmer.yStep);
+    const br = simmer.radiusBase + (i % simmer.xPattern) * simmer.radiusStep;
     ctx.beginPath();
     ctx.arc(bx, by, br, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(255,246,221,.24)';
@@ -151,7 +171,7 @@ function drawSoup(now = 0) {
     ctx.strokeStyle = BROTHS[brothId].flowColor;
     ctx.lineWidth = Math.max(2, size * .006);
     ctx.setLineDash([size * .025, size * .035]);
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < RENDER_DETAILS.flowRingCount; i++) {
       ctx.beginPath();
       ctx.ellipse(cx + Math.sin(t + i) * soupRx * .18, cy + Math.cos(t * .8 + i) * soupRy * .12,
         soupRx * (.36 + i * .12), soupRy * (.24 + i * .08), t * .08, t * .4 + i, t * .4 + i + Math.PI * 1.25);
@@ -242,18 +262,19 @@ function drawVegetable(p) {
   ctx.fillStyle = veg;
   ctx.beginPath();
   if (p.name === '南瓜') {
-    ctx.ellipse(0, 0, r * 1.03, r * .8, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, r * VEGETABLE_SHAPES.pumpkin.radiusX, r * VEGETABLE_SHAPES.pumpkin.radiusY, 0, 0, Math.PI * 2);
   } else if (p.name === '番茄') {
-    for (let i = 0; i < 10; i++) {
-      const a = i / 10 * Math.PI * 2;
-      const radius = i % 2 ? r * .78 : r;
+    for (let i = 0; i < RENDER_DETAILS.tomatoPetalCount; i++) {
+      const a = i / RENDER_DETAILS.tomatoPetalCount * Math.PI * 2;
+      const radius = i % 2 ? r * VEGETABLE_SHAPES.tomato.innerRadius : r;
       const x = Math.cos(a) * radius;
-      const y = Math.sin(a) * radius * .85;
+      const y = Math.sin(a) * radius * VEGETABLE_SHAPES.tomato.verticalScale;
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.closePath();
   } else {
-    ctx.ellipse(0, 0, r * .94, r * .78, .14, 0, Math.PI * 2);
+    const shape = VEGETABLE_SHAPES.default;
+    ctx.ellipse(0, 0, r * shape.radiusX, r * shape.radiusY, shape.rotation, 0, Math.PI * 2);
   }
   ctx.fill();
   ctx.shadowBlur = 0;
@@ -348,11 +369,11 @@ function drawDebris(p) {
 
 function drawParticles(now = performance.now()) {
   // Oil sits on the surface, meat and vegetables catch the light above it.
-  particles.filter(p => p.type === 'oil').forEach(p => drawOil(p, now));
-  particles.filter(p => p.type === 'meat').forEach(drawMeat);
-  particles.filter(p => p.type === 'veg').forEach(drawVegetable);
-  particles.filter(p => p.type === 'bone').forEach(drawBone);
-  particles.filter(p => p.type === 'debris').forEach(drawDebris);
+  particleGroups.oil.forEach(p => drawOil(p, now));
+  particleGroups.meat.forEach(drawMeat);
+  particleGroups.veg.forEach(drawVegetable);
+  particleGroups.bone.forEach(drawBone);
+  particleGroups.debris.forEach(drawDebris);
 }
 
 function drawTool() {

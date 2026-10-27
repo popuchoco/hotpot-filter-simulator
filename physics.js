@@ -1,4 +1,5 @@
-// Particle physics functions; game state is supplied by game.js.
+// Particle physics functions. Depends on game.js globals: particles/particleGroups,
+// canvas dimensions, brothId/BROTHS, boilingNow, reduceMotion, random(), and physics constants.
 function updatePhysics(frameScale) {
   const size = Math.min(canvasWidth, canvasHeight);
   const cx = canvasWidth / 2;
@@ -37,22 +38,35 @@ function updatePhysics(frameScale) {
     }
   });
 
-  const oils = particles.filter(p => p.type === 'oil');
+  const oils = particleGroups.oil;
   const liveOils = new Set(oils);
   const oilOrder = new Map(oils.map((oil, index) => [oil, index]));
   const cellSize = OIL_GRID_CELL_SIZE;
   const cells = new Map();
+  const oilCellByParticle = new Map();
   const cellKey = (x, y) => `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`;
   const addToCell = oil => {
     const key = cellKey(oil.x, oil.y);
     if (!cells.has(key)) cells.set(key, []);
     cells.get(key).push(oil);
+    oilCellByParticle.set(oil, key);
   };
-  const rebuildOilGrid = () => {
-    cells.clear();
-    for (const oil of oils) if (liveOils.has(oil)) addToCell(oil);
+  const removeFromCell = oil => {
+    const key = oilCellByParticle.get(oil);
+    if (key === undefined) return;
+    const cell = cells.get(key);
+    const index = cell?.indexOf(oil) ?? -1;
+    if (index !== -1) cell.splice(index, 1);
+    if (cell && cell.length === 0) cells.delete(key);
+    oilCellByParticle.delete(oil);
   };
-  rebuildOilGrid();
+  const updateOilCell = oil => {
+    const nextKey = cellKey(oil.x, oil.y);
+    if (oilCellByParticle.get(oil) === nextKey) return;
+    removeFromCell(oil);
+    addToCell(oil);
+  };
+  for (const oil of oils) addToCell(oil);
   const baseMergeRate = Math.min(OIL_MERGE_RATE_CAP, OIL_MERGE_BASE_RATE * broth.aggregation * (boilingNow ? OIL_MERGE_BOIL_MULTIPLIER : 1));
   const mergeChance = 1 - Math.pow(1 - baseMergeRate, frameScale);
   for (let i = 0; i < oils.length; i++) {
@@ -88,10 +102,10 @@ function updatePhysics(frameScale) {
           a.vy = (a.vy * areaA + b.vy * areaB) / area;
           const index = particles.indexOf(b);
           if (index !== -1) particles.splice(index, 1);
+          removeFromCell(b);
           liveOils.delete(b);
-          // Rebuild after each merge: the survivor may move to another cell,
-          // and a removed droplet must never remain as a stale grid candidate.
-          rebuildOilGrid();
+          // Incrementally move the survivor and remove the absorbed droplet from the grid.
+          updateOilCell(a);
           break;
         }
         if (dist < mergeDist * OIL_ATTRACTION_RANGE_FACTOR) {
@@ -104,4 +118,5 @@ function updatePhysics(frameScale) {
       }
     }
   }
+  refreshParticleGroups();
 }
