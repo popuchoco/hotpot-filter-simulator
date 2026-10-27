@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Modified 2026-10-27: added daily challenge labels, debris, and clearer play feedback. -->
+<!-- Modified 2026-10-27: separated rendering/physics and hardened pause, storage, and balance logic. -->
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261027-5">
+<link rel="stylesheet" href="style.css?v=20261027-6">
 </head>
 <body>
 <div id="app">
@@ -80,7 +80,7 @@
       <li>挑戰規則可選限時衝分、全清挑戰或無失誤挑戰；另有三種份量關卡。</li>
       <li>清湯、麻辣、味噌的湯色、湯流速度和油花聚集速度不同；沸騰湯流會定時出現。</li>
       <li>骨頭體積較大，需要用有洞湯勺撈兩次；連續使用普通湯匙會增加湯汁損失。</li>
-      <li>每日挑戰在同一天使用固定盤面與湯底，結算可複製分享連結。</li>
+      <li>每日挑戰在同一天使用固定盤面與湯底，結算可複製分享連結；當日盤面（含當日分享連結）可解鎖每日成就，舊日期盤面不計。</li>
       <li>點擊鍋面撈取；結算會顯示清潔度、剩餘食材、帶走湯汁與個人最高分。</li>
       <li>鍵盤可用 1–3 選工具、方向鍵／WASD 移動、Enter／空白鍵撈取、P 暫停。</li>
     </ul>
@@ -179,6 +179,8 @@
   </div>
 </div>
 
-<script src="game.js?v=20261027-5"></script>
+<script src="renderer.js?v=20261027-6"></script>
+<script src="physics.js?v=20261027-6"></script>
+<script src="game.js?v=20261027-6"></script>
 </body>
 </html>

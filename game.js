@@ -1,4 +1,4 @@
-// Modified 2026-10-27: result comparisons, clearer feedback, and broth-specific particles.
+// Game state, input, UI, persistence, and score flow; rendering/physics are separate scripts.
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const scoreEl = document.getElementById('score');
@@ -42,6 +42,37 @@ const CHILL_PRACTICE_COOLDOWN_MS = 25_000;
 const CHILL_EFFECT_MS = 14_000;
 const BOIL_CYCLE_MS = 14_000;
 const BOIL_DURATION_MS = 3_800;
+const FRAME_SCALE_MAX = 2;
+const SCORE_PER_RADIUS = 1.8;
+const SCORE_BASE = 3;
+const BONE_SCORE_BONUS = 18;
+const BIG_PARTICLE_RADIUS = 20;
+const BIG_OIL_SCORE_MULTIPLIER = 1.7;
+const BIG_VEG_SCORE_MULTIPLIER = 1.3;
+const CHILLED_OIL_SCORE_MULTIPLIER = 1.25;
+const VEG_SOUP_LOSS_MULTIPLIER = 1.5;
+const SPOON_STREAK_SOUP_LOSS_INCREMENT = .25;
+const SPOON_STREAK_WINDOW_MS = 2_000;
+const SPOON_STREAK_MAX = 4;
+const WRONG_TOOL_REMOVE_CHANCE = .45;
+const WRONG_TOOL_PENALTY_PER_RADIUS = .8;
+const WRONG_TOOL_BASE_PENALTY = 2;
+const WRONG_TOOL_SOUP_LOSS_ML = 2;
+const SOUP_LOSS_CAP_ML = 5_000;
+const OIL_GRID_CELL_SIZE = 64;
+const OIL_MERGE_BASE_RATE = .035;
+const OIL_MERGE_RATE_CAP = .12;
+const OIL_MERGE_BOIL_MULTIPLIER = 1.8;
+const OIL_MERGE_CAP = 43;
+const OIL_PARTICLE_RADIUS_CAP = 34;
+const OIL_MERGE_DISTANCE_FACTOR = .9;
+const OIL_ATTRACTION_FORCE = .012;
+const OIL_ATTRACTION_RANGE_FACTOR = 1.35;
+const OIL_ATTRACTION_BOIL_MULTIPLIER = 1.6;
+const BOIL_FLOW_FORCE = .028;
+const BOIL_RADIAL_FORCE_RATIO = .16;
+const MAX_PARTICLE_SPEED = 1.5;
+const BOUNDARY_REFLECTION_MULTIPLIER = 1.7;
 const RULES = {
   score: { name: '限時衝分', description: '時間內盡量撈取，挑戰更高分數。' },
   clear: { name: '全清挑戰', description: '限時清空整鍋；時間到仍有食材就算未完成。' },
@@ -74,7 +105,7 @@ const ACHIEVEMENTS = [
   { id: 'clean', name: '清鍋達人', description: '單局清潔度達 100%。', skin: 'copper' },
   { id: 'accurate', name: '工具達人', description: '至少撈取 8 次，工具正確率達 90%。' },
   { id: 'gentle', name: '惜湯高手', description: '成功撈取 8 份以上，湯汁損失不超過 20 mL。' },
-  { id: 'daily', name: '每日鍋友', description: '完成一次每日固定盤面挑戰。' },
+  { id: 'daily', name: '每日鍋友', description: '完成當日固定盤面挑戰；舊日期分享盤不計入。' },
   { id: 'steady', name: '穩手撈料', description: '連續 5 次正確撈取，中途沒有工具失誤。' }
 ];
 const STAGES = {
@@ -117,7 +148,7 @@ let remainingMs = 0;
 let activeDurationMs = 0;
 let deadline = 0;
 let animationFrame = 0;
-let lastFrameTime = 0;
+let lastFrameTime = null;
 let running = false;
 let gameEnded = false;
 let particles = [];
@@ -136,6 +167,7 @@ let isDailyChallenge = false;
 let dailyChallengeSeed = null;
 let dailyChallengeDate = '';
 let sharedDailyChallenge = false;
+let isTodayDailyChallenge = false;
 let randomState = 0;
 let randomSeedActive = false;
 let activeStage = STAGES.home;
@@ -159,7 +191,7 @@ let soundEnabled = false;
 let audioContext = null;
 let lastCountdownSecond = null;
 let spoonStreak = 0;
-let lastSpoonUse = 0;
+let lastSpoonUse = null;
 let selectedSkin = 'steel';
 
 bestScoreMenuEl.textContent = bestScore;
@@ -167,63 +199,60 @@ initializeSettings();
 renderAchievements();
 updateStageRecordDisplay();
 
-function loadBestScore() {
+function loadJSON(key, fallback) {
   try {
-    const value = Number(window.localStorage.getItem(BEST_SCORE_KEY));
-    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+    const stored = window.localStorage.getItem(key);
+    return stored === null ? fallback : JSON.parse(stored) ?? fallback;
   } catch {
-    return 0;
+    return fallback;
   }
+}
+
+function saveJSON(key, value) {
+  try { window.localStorage.setItem(key, JSON.stringify(value)); } catch { /* Storage is optional. */ }
+}
+
+function loadBestScore() {
+  const value = Number(loadJSON(BEST_SCORE_KEY, 0));
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
 }
 
 function saveBestScore(value) {
-  try {
-    window.localStorage.setItem(BEST_SCORE_KEY, String(value));
-  } catch {
-    // The game remains playable when storage is blocked or unavailable.
-  }
+  saveJSON(BEST_SCORE_KEY, value);
 }
 
 function loadStageRecords() {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(STAGE_RECORDS_KEY) || '{}');
-    const records = parsed && typeof parsed === 'object' ? parsed : {};
-    if (!Object.keys(records).length && bestScore > 0) records.home = bestScore;
-    return records;
-  } catch {
-    return bestScore > 0 ? { home: bestScore } : {};
-  }
+  const parsed = loadJSON(STAGE_RECORDS_KEY, {});
+  const records = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  if (!Object.keys(records).length && bestScore > 0) records.home = bestScore;
+  return records;
 }
 
 function saveStageRecords() {
-  try { window.localStorage.setItem(STAGE_RECORDS_KEY, JSON.stringify(stageRecords)); } catch { /* Local storage is optional. */ }
+  saveJSON(STAGE_RECORDS_KEY, stageRecords);
 }
 
 function loadPreviousResults() {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(PREVIOUS_RESULTS_KEY) || '{}');
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch { return {}; }
+  const parsed = loadJSON(PREVIOUS_RESULTS_KEY, {});
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
 }
 
 function savePreviousResults() {
-  try { window.localStorage.setItem(PREVIOUS_RESULTS_KEY, JSON.stringify(previousResults)); } catch { /* Local storage is optional. */ }
+  saveJSON(PREVIOUS_RESULTS_KEY, previousResults);
 }
 
 function loadAchievements() {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(ACHIEVEMENTS_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed.filter(id => ACHIEVEMENTS.some(item => item.id === id)) : [];
-  } catch { return []; }
+  const parsed = loadJSON(ACHIEVEMENTS_KEY, []);
+  return Array.isArray(parsed) ? parsed.filter(id => ACHIEVEMENTS.some(item => item.id === id)) : [];
 }
 
 function saveAchievements() {
-  try { window.localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(unlockedAchievements)); } catch { /* Local storage is optional. */ }
+  saveJSON(ACHIEVEMENTS_KEY, unlockedAchievements);
 }
 
 function initializeSettings() {
-  let settings = {};
-  try { settings = JSON.parse(window.localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch { /* Use defaults. */ }
+  const storedSettings = loadJSON(SETTINGS_KEY, {});
+  const settings = storedSettings && typeof storedSettings === 'object' && !Array.isArray(storedSettings) ? storedSettings : {};
   highContrast = Boolean(settings.highContrast);
   reduceMotion = Object.prototype.hasOwnProperty.call(settings, 'reduceMotion')
     ? Boolean(settings.reduceMotion)
@@ -239,7 +268,7 @@ function initializeSettings() {
 }
 
 function saveSettings() {
-  try { window.localStorage.setItem(SETTINGS_KEY, JSON.stringify({ highContrast, reduceMotion, soundEnabled, skin: selectedSkin })); } catch { /* The settings are still active for this page. */ }
+  saveJSON(SETTINGS_KEY, { highContrast, reduceMotion, soundEnabled, skin: selectedSkin });
 }
 
 function updateSkinOptions() {
@@ -268,7 +297,7 @@ function unlockAchievementsForRun({ cleanliness, correctRate, attempts, successf
     clean: cleanliness >= 100,
     accurate: attempts >= 8 && correctRate >= 90,
     gentle: successful >= 8 && totalSoupLoss <= 20,
-    daily: isDailyChallenge
+    daily: isTodayDailyChallenge
   };
   ACHIEVEMENTS.forEach(item => {
     if (conditions[item.id] && !unlockedAchievements.includes(item.id)) {
@@ -479,543 +508,6 @@ function spawnBrothDebris(requestedCount = 1) {
   return count;
 }
 
-function drawHandle(cx, cy, rx, ry, side) {
-  const hx = cx + side * rx * 1.06;
-  const hy = cy + ry * 0.04;
-  const metal = ctx.createLinearGradient(hx - rx * 0.12, hy - ry * 0.08, hx + rx * 0.12, hy + ry * 0.1);
-  metal.addColorStop(0, '#554f45');
-  metal.addColorStop(0.25, '#f1e9d8');
-  metal.addColorStop(0.52, '#888176');
-  metal.addColorStop(0.78, '#ded5c3');
-  metal.addColorStop(1, '#36332e');
-
-  ctx.save();
-  ctx.strokeStyle = '#171613';
-  ctx.lineWidth = Math.max(7, rx * 0.045);
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(cx + side * rx * 0.82, hy);
-  ctx.lineTo(cx + side * rx * 1.04, hy);
-  ctx.stroke();
-  ctx.strokeStyle = metal;
-  ctx.lineWidth = Math.max(4, rx * 0.024);
-  ctx.beginPath();
-  ctx.ellipse(hx, hy, rx * 0.13, ry * 0.085, 0, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(cx + side * rx * 0.84, hy - ry * 0.012);
-  ctx.lineTo(cx + side * rx * 1.04, hy - ry * 0.012);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawSoup(now = 0) {
-  const w = canvasWidth;
-  const h = canvasHeight;
-  if (!w || !h) return;
-  const cx = w / 2;
-  const cy = h / 2;
-  const size = Math.min(w, h);
-  const rx = size * 0.42;
-  const ry = rx * 0.93;
-
-  const backdrop = ctx.createRadialGradient(cx, cy, size * 0.1, cx, cy, size * 0.72);
-  backdrop.addColorStop(0, '#3e3329');
-  backdrop.addColorStop(0.72, '#221c18');
-  backdrop.addColorStop(1, '#171411');
-  ctx.fillStyle = backdrop;
-  ctx.fillRect(0, 0, w, h);
-
-  drawHandle(cx, cy, rx, ry, -1);
-  drawHandle(cx, cy, rx, ry, 1);
-
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,.72)';
-  ctx.shadowBlur = size * 0.055;
-  ctx.shadowOffsetY = size * 0.035;
-  const potBody = ctx.createLinearGradient(cx - rx, cy - ry, cx + rx * 0.45, cy + ry);
-  const potStops = POT_SKINS[selectedSkin].outer;
-  [0, .06, .14, .24, .29, .76, .93, 1].forEach((offset, index) => potBody.addColorStop(offset, potStops[index]));
-  ctx.fillStyle = potBody;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  const rimGradient = ctx.createLinearGradient(cx - rx, cy - ry, cx + rx, cy + ry);
-  rimGradient.addColorStop(0, '#f9f4e8');
-  rimGradient.addColorStop(0.12, '#5e5a52');
-  rimGradient.addColorStop(0.29, '#ded7c8');
-  rimGradient.addColorStop(0.46, '#58544c');
-  rimGradient.addColorStop(0.7, '#f1e8d7');
-  rimGradient.addColorStop(1, '#504c44');
-  ctx.strokeStyle = 'rgba(10,9,8,.8)';
-  ctx.lineWidth = Math.max(8, size * 0.022);
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, rx * 0.985, ry * 0.985, 0, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.strokeStyle = rimGradient;
-  ctx.lineWidth = Math.max(3, size * 0.009);
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, rx * 0.97, ry * 0.97, 0, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,249,228,.67)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, rx * 0.932, ry * 0.932, 0, 0, Math.PI * 2);
-  ctx.stroke();
-
-  const basinX = rx * 0.925;
-  const basinY = ry * 0.925;
-  const inside = ctx.createRadialGradient(cx - rx * 0.24, cy - ry * 0.27, size * 0.04, cx, cy, rx * 1.03);
-  inside.addColorStop(0, '#f9f5e8');
-  inside.addColorStop(0.12, '#59564f');
-  inside.addColorStop(0.28, '#d5cdbb');
-  inside.addColorStop(0.42, '#777164');
-  inside.addColorStop(0.65, '#282724');
-  inside.addColorStop(1, '#131312');
-  ctx.fillStyle = inside;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, basinX, basinY, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  const soupRx = rx * 0.875;
-  const soupRy = ry * 0.855;
-  ctx.save();
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, soupRx, soupRy, 0, 0, Math.PI * 2);
-  ctx.clip();
-
-  const broth = ctx.createRadialGradient(cx - soupRx * 0.28, cy - soupRy * 0.39, size * 0.04, cx, cy, soupRx * 1.25);
-  const brothColors = BROTHS[brothId].colors;
-  broth.addColorStop(0, brothColors[0]);
-  broth.addColorStop(0.36, brothColors[1]);
-  broth.addColorStop(0.72, brothColors[2]);
-  broth.addColorStop(1, brothColors[3]);
-  ctx.fillStyle = broth;
-  ctx.fillRect(cx - soupRx, cy - soupRy, soupRx * 2, soupRy * 2);
-
-  const warmShadow = ctx.createRadialGradient(cx, cy + soupRy * 0.54, 0, cx, cy + soupRy * 0.54, soupRx * 0.95);
-  warmShadow.addColorStop(0, 'rgba(112,61,29,.2)');
-  warmShadow.addColorStop(1, 'rgba(112,61,29,0)');
-  ctx.fillStyle = warmShadow;
-  ctx.fillRect(cx - soupRx, cy - soupRy, soupRx * 2, soupRy * 2);
-
-  // A few slow surface rings and bubbles give the broth a gentle simmer.
-  const t = (reduceMotion ? 0 : now) / 1000;
-  for (let i = 0; i < (reduceMotion ? 0 : 8); i++) {
-    const phase = t * (0.35 + i * 0.015) + i * 1.7;
-    const bx = cx + Math.sin(phase) * soupRx * (0.2 + (i % 3) * 0.19);
-    const by = cy + Math.cos(phase * 0.83) * soupRy * (0.16 + (i % 4) * 0.14);
-    const br = 1.4 + (i % 3) * 1.1;
-    ctx.beginPath();
-    ctx.arc(bx, by, br, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,246,221,.24)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(143,91,48,.27)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
-  ctx.strokeStyle = 'rgba(255,255,240,.3)';
-  ctx.lineWidth = Math.max(4, size * .016);
-  ctx.beginPath();
-  ctx.ellipse(cx - soupRx * .16, cy - soupRy * .76, soupRx * .47, soupRy * .1, -.08, Math.PI * 1.02, Math.PI * 1.88);
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,244,219,.12)';
-  ctx.lineWidth = 1.4;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, soupRx * .91, soupRy * .88, .06, .1, Math.PI * .88);
-  ctx.stroke();
-  if (boilingNow && !reduceMotion) {
-    ctx.save();
-    ctx.strokeStyle = BROTHS[brothId].flowColor;
-    ctx.lineWidth = Math.max(2, size * .006);
-    ctx.setLineDash([size * .025, size * .035]);
-    for (let i = 0; i < 3; i++) {
-      ctx.beginPath();
-      ctx.ellipse(cx + Math.sin(t + i) * soupRx * .18, cy + Math.cos(t * .8 + i) * soupRy * .12,
-        soupRx * (.36 + i * .12), soupRy * (.24 + i * .08), t * .08, t * .4 + i, t * .4 + i + Math.PI * 1.25);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-  ctx.restore();
-
-  // Fine double highlight on the rolled rim.
-  ctx.strokeStyle = 'rgba(255,251,234,.62)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, rx * .957, ry * .957, 0, Math.PI * 1.08, Math.PI * 1.88);
-  ctx.stroke();
-}
-
-function isOilChilled(now = performance.now()) {
-  return chillUsed && now < chilledUntil;
-}
-
-function drawOil(p, now = performance.now()) {
-  const r = p.r;
-  const chilled = isOilChilled(now);
-  const shimmer = reduceMotion ? 0 : Math.sin(now / 420 + p.shimmer) * .22;
-  ctx.save();
-  ctx.shadowColor = chilled && highContrast ? 'rgba(0,0,0,.98)' : chilled ? 'rgba(136,225,245,.48)' : 'rgba(115,69,27,.2)';
-  ctx.shadowBlur = Math.max(2, r * .28);
-  const oil = ctx.createRadialGradient(p.x - r * .3, p.y - r * .34, r * .06, p.x, p.y, r * 1.08);
-  oil.addColorStop(0, chilled ? 'rgba(255,255,235,.98)' : 'rgba(255,245,197,.93)');
-  oil.addColorStop(.34, chilled ? 'rgba(206,247,249,.92)' : 'rgba(246,210,130,.78)');
-  oil.addColorStop(.78, chilled ? 'rgba(133,208,222,.83)' : 'rgba(229,177,91,.62)');
-  oil.addColorStop(1, chilled ? 'rgba(81,157,177,.65)' : 'rgba(190,133,57,.46)');
-  ctx.fillStyle = oil;
-  ctx.beginPath();
-  ctx.ellipse(p.x, p.y, r * 1.13, r * .9, p.shimmer || 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = chilled && highContrast ? '#00ffff' : chilled ? 'rgba(219,255,255,.95)' : 'rgba(255,248,215,.72)';
-  ctx.lineWidth = chilled && highContrast ? Math.max(2.4, r * .18) : Math.max(1, r * .08);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.ellipse(p.x - r * .15 + shimmer * r, p.y - r * (.27 + shimmer * .18), r * (.4 + shimmer * .12), r * .18, -.22, Math.PI * 1.08, Math.PI * 1.86);
-  ctx.strokeStyle = highContrast ? '#fff' : `rgba(255,255,239,${.55 + Math.abs(shimmer)})`;
-  ctx.lineWidth = Math.max(1, r * .1);
-  ctx.stroke();
-  if (chilled) {
-    ctx.strokeStyle = highContrast ? '#fff36b' : 'rgba(222,255,255,.8)';
-    ctx.lineWidth = highContrast ? Math.max(2, r * .16) : Math.max(1, r * .12);
-    ctx.beginPath();
-    ctx.ellipse(p.x, p.y, r * 1.3, r * 1.08, p.shimmer || 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawMeat(p) {
-  const r = p.r;
-  const meat = ctx.createRadialGradient(p.x - r * .34, p.y - r * .42, .2, p.x, p.y, r * 1.2);
-  meat.addColorStop(0, '#b7775b');
-  meat.addColorStop(.5, p.shade > .5 ? '#88503d' : '#9b5d43');
-  meat.addColorStop(1, '#56352b');
-  ctx.fillStyle = meat;
-  ctx.beginPath();
-  ctx.ellipse(p.x, p.y, r * 1.15, r * .88, p.shade || 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = highContrast ? '#fff' : 'rgba(255,211,169,.34)';
-  ctx.lineWidth = highContrast ? 1.8 : .8;
-  ctx.stroke();
-  ctx.fillStyle = 'rgba(255,226,190,.37)';
-  ctx.beginPath();
-  ctx.arc(p.x - r * .28, p.y - r * .24, Math.max(.7, r * .16), 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawVegetable(p) {
-  const r = p.r;
-  ctx.save();
-  ctx.translate(p.x, p.y);
-  ctx.rotate(p.rotation || 0);
-  ctx.shadowColor = 'rgba(80,43,20,.35)';
-  ctx.shadowBlur = 4;
-  const veg = ctx.createRadialGradient(-r * .32, -r * .4, r * .04, 0, 0, r * 1.25);
-  veg.addColorStop(0, '#fff0c9');
-  veg.addColorStop(.2, p.color);
-  veg.addColorStop(.8, p.color);
-  veg.addColorStop(1, 'rgba(86,50,28,.8)');
-  ctx.fillStyle = veg;
-  ctx.beginPath();
-  if (p.name === '南瓜') {
-    ctx.ellipse(0, 0, r * 1.03, r * .8, 0, 0, Math.PI * 2);
-  } else if (p.name === '番茄') {
-    for (let i = 0; i < 10; i++) {
-      const a = i / 10 * Math.PI * 2;
-      const radius = i % 2 ? r * .78 : r;
-      const x = Math.cos(a) * radius;
-      const y = Math.sin(a) * radius * .85;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-  } else {
-    ctx.ellipse(0, 0, r * .94, r * .78, .14, 0, Math.PI * 2);
-  }
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = highContrast ? '#fff' : 'rgba(255,241,210,.58)';
-  ctx.lineWidth = highContrast ? 2 : 1.2;
-  ctx.stroke();
-  if (p.name === '南瓜') {
-    ctx.strokeStyle = 'rgba(117,61,28,.32)';
-    ctx.lineWidth = 1.1;
-    for (const offset of [-.35, 0, .35]) {
-      ctx.beginPath();
-      ctx.ellipse(offset * r, 0, r * .19, r * .72, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-  }
-  ctx.restore();
-}
-
-function drawBone(p) {
-  const r = p.r;
-  ctx.save();
-  ctx.translate(p.x, p.y);
-  ctx.rotate(p.rotation || 0);
-  ctx.shadowColor = 'rgba(55,35,20,.5)';
-  ctx.shadowBlur = 5;
-  ctx.fillStyle = p.integrity > 1 ? '#e8dfc8' : highContrast ? '#fff0a6' : '#cfc3a6';
-  ctx.strokeStyle = highContrast ? '#16110d' : 'rgba(82,59,39,.7)';
-  ctx.lineWidth = highContrast ? 2.5 : 1.2;
-  ctx.beginPath();
-  ctx.roundRect(-r * .58, -r * .2, r * 1.16, r * .4, r * .18);
-  ctx.fill();
-  ctx.stroke();
-  for (const side of [-1, 1]) {
-    ctx.beginPath();
-    ctx.arc(side * r * .55, -r * .16, r * .27, 0, Math.PI * 2);
-    ctx.arc(side * r * .55, r * .16, r * .27, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  }
-  if (p.integrity === 1) {
-    ctx.strokeStyle = highContrast ? '#c90000' : '#744232';
-    ctx.lineWidth = highContrast ? 3 : 2;
-    ctx.beginPath();
-    ctx.moveTo(-r * .12, -r * .2);
-    ctx.lineTo(r * .04, 0);
-    ctx.lineTo(-r * .08, r * .16);
-    ctx.stroke();
-  }
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = p.integrity === 1 ? (highContrast ? '#c90000' : '#744232') : '#4b3928';
-  ctx.beginPath();
-  ctx.arc(r * .62, -r * .62, r * .25, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#fffaf0';
-  ctx.font = `bold ${Math.max(10, r * .3)}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(String(p.integrity), r * .62, -r * .62);
-  ctx.restore();
-}
-
-function drawDebris(p) {
-  ctx.save();
-  ctx.translate(p.x, p.y);
-  ctx.rotate(p.rotation || 0);
-  if (p.debrisKind === 'chili') {
-    ctx.fillStyle = highContrast ? '#ff4a22' : '#b9442e';
-    ctx.strokeStyle = highContrast ? '#fff36b' : 'rgba(94,31,22,.85)';
-    ctx.lineWidth = highContrast ? 1.8 : 1;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, p.r * 1.05, p.r * .38, -.1, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#f7d88c';
-    ctx.beginPath();
-    ctx.arc(-p.r * .25, 0, Math.max(1.2, p.r * .12), 0, Math.PI * 2);
-    ctx.arc(p.r * .25, 0, Math.max(1.2, p.r * .12), 0, Math.PI * 2);
-    ctx.fill();
-  } else {
-    ctx.fillStyle = highContrast ? '#fff36b' : '#d3c39a';
-    ctx.strokeStyle = highContrast ? '#111' : 'rgba(86,66,43,.8)';
-    ctx.lineWidth = highContrast ? 1.8 : 1;
-    for (const [x, y, scale] of [[-.32, -.12, .55], [.18, -.28, .45], [.3, .2, .58], [-.2, .25, .42]]) {
-      ctx.beginPath();
-      ctx.arc(x * p.r, y * p.r, Math.max(2, p.r * scale), 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
-  }
-  ctx.restore();
-}
-
-function drawParticles(now = performance.now()) {
-  // Oil sits on the surface, meat and vegetables catch the light above it.
-  particles.filter(p => p.type === 'oil').forEach(p => drawOil(p, now));
-  particles.filter(p => p.type === 'meat').forEach(drawMeat);
-  particles.filter(p => p.type === 'veg').forEach(drawVegetable);
-  particles.filter(p => p.type === 'bone').forEach(drawBone);
-  particles.filter(p => p.type === 'debris').forEach(drawDebris);
-}
-
-function drawTool() {
-  const scoopRadius = TOOL_CONFIG[currentTool].radius;
-  ctx.save();
-  ctx.translate(mouse.x, mouse.y);
-  ctx.strokeStyle = 'rgba(255,248,226,.92)';
-  ctx.fillStyle = 'rgba(255,238,201,.16)';
-  ctx.lineWidth = 2.2;
-  ctx.shadowColor = 'rgba(32,21,14,.6)';
-  ctx.shadowBlur = 5;
-
-  if (currentTool === 'spoon') {
-    ctx.beginPath();
-    ctx.ellipse(0, 0, scoopRadius * .62, scoopRadius * .4, -.15, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, scoopRadius * .28);
-    ctx.lineTo(0, scoopRadius * 1.25);
-    ctx.stroke();
-  } else if (currentTool === 'holey') {
-    ctx.beginPath();
-    ctx.ellipse(0, 0, scoopRadius * .61, scoopRadius * .39, -.12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = 'rgba(255,248,226,.68)';
-    for (let i = -1; i <= 1; i++) {
-      for (let j = -1; j <= 1; j++) {
-        ctx.beginPath();
-        ctx.arc(i * 13, j * 9, 2.5, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-    }
-    ctx.beginPath();
-    ctx.moveTo(0, scoopRadius * .3);
-    ctx.lineTo(0, scoopRadius * 1.23);
-    ctx.stroke();
-  } else {
-    ctx.beginPath();
-    ctx.arc(0, 0, scoopRadius * .55, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = 'rgba(255,248,226,.7)';
-    for (let i = -2; i <= 2; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * 9, -scoopRadius * .5);
-      ctx.lineTo(i * 9, scoopRadius * .5);
-      ctx.moveTo(-scoopRadius * .5, i * 9);
-      ctx.lineTo(scoopRadius * .5, i * 9);
-      ctx.stroke();
-    }
-    ctx.beginPath();
-    ctx.moveTo(0, scoopRadius * .5);
-    ctx.lineTo(0, scoopRadius * 1.25);
-    ctx.stroke();
-  }
-  updateToolTip();
-  ctx.restore();
-}
-
-function updatePhysics(frameScale) {
-  const size = Math.min(canvasWidth, canvasHeight);
-  const cx = canvasWidth / 2;
-  const cy = canvasHeight / 2;
-  const rx = size * .365;
-  const ry = size * .34;
-
-  const broth = BROTHS[brothId];
-  const motionScale = reduceMotion ? .18 : 1;
-  particles.forEach(p => {
-    if (boilingNow && !reduceMotion) {
-      const dx = p.x - cx;
-      const dy = p.y - cy;
-      const distance = Math.max(30, Math.hypot(dx, dy));
-      const force = .028 * broth.flow * frameScale;
-      p.vx += (-dy / distance) * force;
-      p.vy += (dx / distance) * force;
-      p.vx += (dx / distance) * force * .16;
-      p.vy += (dy / distance) * force * .16;
-      p.vx = Math.max(-1.5, Math.min(1.5, p.vx));
-      p.vy = Math.max(-1.5, Math.min(1.5, p.vy));
-    }
-    p.x += p.vx * frameScale * motionScale;
-    p.y += p.vy * frameScale * motionScale;
-    const nx = (p.x - cx) / Math.max(1, rx - p.r);
-    const ny = (p.y - cy) / Math.max(1, ry - p.r);
-    const distance = Math.hypot(nx, ny);
-    if (distance > 1) {
-      const normalX = nx / distance;
-      const normalY = ny / distance;
-      const projection = p.vx * normalX + p.vy * normalY;
-      p.vx -= projection * 1.7 * normalX;
-      p.vy -= projection * 1.7 * normalY;
-      p.x = cx + normalX * (rx - p.r);
-      p.y = cy + normalY * (ry - p.r);
-    }
-  });
-
-  const oils = particles.filter(p => p.type === 'oil');
-  const liveOils = new Set(oils);
-  const oilOrder = new Map(oils.map((oil, index) => [oil, index]));
-  const cellSize = 64;
-  const cells = new Map();
-  const cellKey = (x, y) => `${Math.floor(x / cellSize)},${Math.floor(y / cellSize)}`;
-  for (const oil of oils) {
-    const key = cellKey(oil.x, oil.y);
-    if (!cells.has(key)) cells.set(key, []);
-    cells.get(key).push(oil);
-  }
-  const baseMergeRate = Math.min(.12, .035 * broth.aggregation * (boilingNow ? 1.8 : 1));
-  const mergeChance = 1 - Math.pow(1 - baseMergeRate, frameScale);
-  const removeFromCell = (oil, key) => {
-    const bucket = cells.get(key);
-    if (!bucket) return;
-    const index = bucket.indexOf(oil);
-    if (index !== -1) bucket.splice(index, 1);
-    if (!bucket.length) cells.delete(key);
-  };
-  const addToCell = oil => {
-    const key = cellKey(oil.x, oil.y);
-    if (!cells.has(key)) cells.set(key, []);
-    cells.get(key).push(oil);
-  };
-  for (let i = 0; i < oils.length; i++) {
-    const a = oils[i];
-    if (!liveOils.has(a)) continue;
-    const [cellX, cellY] = cellKey(a.x, a.y).split(',').map(Number);
-    const candidates = new Set();
-    // Oil only merges within a small radius; nearby grid cells avoid all-pairs checks.
-    for (let gx = cellX - 1; gx <= cellX + 1; gx++) {
-      for (let gy = cellY - 1; gy <= cellY + 1; gy++) {
-        for (const oil of cells.get(`${gx},${gy}`) || []) candidates.add(oil);
-      }
-    }
-    for (const b of candidates) {
-      if (oilOrder.get(b) <= i) continue;
-      if (!liveOils.has(b)) continue;
-      const dx = a.x - b.x;
-      const dy = a.y - b.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < 1) continue;
-      const mergeDist = (a.r + b.r) * .9;
-      if (dist < mergeDist) {
-        if (a.r + b.r < 43 && random() < mergeChance) {
-          const oldAKey = cellKey(a.x, a.y);
-          const oldBKey = cellKey(b.x, b.y);
-          const areaA = a.r * a.r;
-          const areaB = b.r * b.r;
-          const area = areaA + areaB;
-          a.x = (a.x * areaA + b.x * areaB) / area;
-          a.y = (a.y * areaA + b.y * areaB) / area;
-          a.r = Math.min(Math.sqrt(area), 34);
-          a.mass = (a.mass || areaA) + (b.mass || areaB);
-          a.units = (a.units || 1) + (b.units || 1);
-          a.vx = (a.vx * areaA + b.vx * areaB) / area;
-          a.vy = (a.vy * areaA + b.vy * areaB) / area;
-          const newAKey = cellKey(a.x, a.y);
-          if (newAKey !== oldAKey) {
-            removeFromCell(a, oldAKey);
-            addToCell(a);
-          }
-          removeFromCell(b, oldBKey);
-          const index = particles.indexOf(b);
-          if (index !== -1) {
-            particles.splice(index, 1);
-            liveOils.delete(b);
-          }
-          break;
-        }
-        if (dist < mergeDist * 1.35) {
-          const force = .012 * broth.aggregation * (boilingNow ? 1.6 : 1) * frameScale;
-          a.vx -= (dx / dist) * force;
-          a.vy -= (dy / dist) * force;
-          b.vx += (dx / dist) * force;
-          b.vy += (dy / dist) * force;
-        }
-      }
-    }
-  }
-}
-
 function updateCounts() {
   meatCountEl.textContent = scooped.meat;
   vegCountEl.textContent = scooped.veg;
@@ -1050,11 +542,11 @@ function tryScoop() {
 
   const now = performance.now();
   if (currentTool === 'spoon') {
-    spoonStreak = now - lastSpoonUse <= 2_000 ? Math.min(4, spoonStreak + 1) : 0;
+    spoonStreak = lastSpoonUse !== null && now - lastSpoonUse <= SPOON_STREAK_WINDOW_MS ? Math.min(SPOON_STREAK_MAX, spoonStreak + 1) : 1;
     lastSpoonUse = now;
   } else {
     spoonStreak = 0;
-    lastSpoonUse = 0;
+    lastSpoonUse = null;
   }
 
   let gained = 0;
@@ -1065,16 +557,16 @@ function tryScoop() {
   let crackedBone = false;
   caught.forEach((p, i) => {
     const good = isGoodToolFor(p, now);
-    const isBig = p.r > 20;
+      const isBig = p.r > BIG_PARTICLE_RADIUS;
     if (good) {
-      let points = Math.round(p.r * 1.8 + 3);
-      if (p.type === 'bone') points += 18;
-      if (p.type === 'oil' && isBig) points = Math.round(points * 1.7);
-      if (p.type === 'veg' && isBig) points = Math.round(points * 1.3);
-      if (p.type === 'oil' && isOilChilled(now)) points = Math.round(points * 1.25);
+      let points = Math.round(p.r * SCORE_PER_RADIUS + SCORE_BASE);
+      if (p.type === 'bone') points += BONE_SCORE_BONUS;
+      if (p.type === 'oil' && isBig) points = Math.round(points * BIG_OIL_SCORE_MULTIPLIER);
+      if (p.type === 'veg' && isBig) points = Math.round(points * BIG_VEG_SCORE_MULTIPLIER);
+      if (p.type === 'oil' && isOilChilled(now)) points = Math.round(points * CHILLED_OIL_SCORE_MULTIPLIER);
       gained += Math.round(points * tool.scoreMultiplier);
-      const spoonPenalty = currentTool === 'spoon' ? 1 + spoonStreak * .25 : 1;
-      soupLossMl = Math.min(5000, soupLossMl + tool.soupLossMl * (p.type === 'veg' ? 1.5 : 1) * spoonPenalty);
+      const spoonPenalty = currentTool === 'spoon' ? 1 + spoonStreak * SPOON_STREAK_SOUP_LOSS_INCREMENT : 1;
+      soupLossMl = Math.min(SOUP_LOSS_CAP_ML, soupLossMl + tool.soupLossMl * (p.type === 'veg' ? VEG_SOUP_LOSS_MULTIPLIER : 1) * spoonPenalty);
       successfulActions++;
       if (p.type === 'bone') scooped.boneHits++;
       if (p.type === 'bone' && p.integrity > 1) {
@@ -1087,12 +579,12 @@ function tryScoop() {
         removedMass[p.type] += p.mass || 1;
       }
     } else {
-      lost += Math.round(p.r * .8 + 2);
+      lost += Math.round(p.r * WRONG_TOOL_PENALTY_PER_RADIUS + WRONG_TOOL_BASE_PENALTY);
       scooped.fail++;
-      if (random() < .45) {
+      if (random() < WRONG_TOOL_REMOVE_CHANCE) {
         remove.add(indices[i]);
         removedMass[p.type] += p.mass || 1;
-        soupLossMl = Math.min(5000, soupLossMl + 2);
+        soupLossMl = Math.min(SOUP_LOSS_CAP_ML, soupLossMl + WRONG_TOOL_SOUP_LOSS_ML);
       }
     }
   });
@@ -1104,7 +596,7 @@ function tryScoop() {
 
   playSound(lost > 0 ? 'fail' : crackedBone ? 'boneCrack' : 'scoop');
   if (gained > lost) {
-    const bigBonus = caught.some(p => p.r > 20 && isGoodToolFor(p, now));
+    const bigBonus = caught.some(p => p.r > BIG_PARTICLE_RADIUS && isGoodToolFor(p, now));
     const coldBonus = caught.some(p => p.type === 'oil' && isOilChilled(now) && isGoodToolFor(p, now));
     showHint(coldBonus ? `凝固油花撈起！細網很合適 +${gained - lost}` : bigBonus ? `大塊撈起！${tool.name} +${gained - lost}` : `撈取成功 +${gained - lost}`);
   } else {
@@ -1118,6 +610,7 @@ function tryScoop() {
   } else if (scooped.fail > failuresBeforeScoop) {
     correctActionStreak = 0;
   }
+  updateToolTip();
   if (challengeRule === 'perfect' && scooped.fail > 0) {
     endGame('mistake');
     return;
@@ -1130,7 +623,7 @@ function tryScoop() {
 }
 
 function updateToolTip() {
-  const spoonNote = currentTool === 'spoon' ? ` 連續使用會逐次增加湯汁損失（目前連續 ${spoonStreak} 次）。` : '';
+  const spoonNote = currentTool === 'spoon' ? ` 普通湯匙連續撈取 ${spoonStreak} 次；繼續使用會增加帶走的湯汁（切換工具會歸零）。` : '';
   const boneNote = currentTool === 'holey' ? ' 骨頭需要成功撈取兩次才會清除。' : '';
   toolTip.textContent = `${TOOL_CONFIG[currentTool].tip}${spoonNote}${boneNote}`;
 }
@@ -1173,6 +666,10 @@ function selectTool(toolId) {
     showHint('浮油已凝固，只能用細網撈取；等效果結束即可切換。');
     playSound('fail');
     return;
+  }
+  if (toolId !== 'spoon') {
+    spoonStreak = 0;
+    lastSpoonUse = null;
   }
   currentTool = toolId;
   document.querySelectorAll('.tool').forEach(button => {
@@ -1227,13 +724,13 @@ function playSound(kind) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return;
     audioContext ||= new AudioContextClass();
-    if (audioContext.state === 'suspended') audioContext.resume();
+    if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
     const notes = kind === 'scoop' ? [660, 880]
       : kind === 'chill' ? [520, 740, 980]
         : kind === 'tick' ? [420]
           : kind === 'boil' ? [300, 360]
             : kind === 'boneCrack' ? [240, 420]
-              : [190, 140];
+            : [190, 140];
     notes.forEach((frequency, index) => {
       const start = audioContext.currentTime + index * .075;
       const oscillator = audioContext.createOscillator();
@@ -1297,8 +794,8 @@ function loop(now) {
     return;
   }
 
-  const elapsedMs = lastFrameTime ? Math.max(0, now - lastFrameTime) : 0;
-  const frameScale = lastFrameTime ? Math.min(2.4, elapsedMs / (1000 / 60)) : 1;
+  const elapsedMs = lastFrameTime === null ? 0 : Math.max(0, now - lastFrameTime);
+  const frameScale = lastFrameTime === null ? 1 : Math.min(FRAME_SCALE_MAX, elapsedMs / (1000 / 60));
   lastFrameTime = now;
   // Event cadence follows active wall-clock time; physics still caps large frame steps.
   simulationTimeMs += elapsedMs;
@@ -1326,6 +823,7 @@ function startGame(mode = 'challenge', daily = false) {
   dailyChallengeSeed = dailyInfo?.seed ?? null;
   dailyChallengeDate = dailyInfo?.date ?? '';
   sharedDailyChallenge = Boolean(dailyInfo?.shared);
+  isTodayDailyChallenge = isDailyChallenge && dailyChallengeDate === dailyDateTaipei();
   currentStageId = isDailyChallenge ? 'home' : (stageSelect.value in STAGES ? stageSelect.value : 'home');
   challengeRule = isDailyChallenge ? 'score' : (mode === 'practice' ? 'score' : (ruleSelect.value in RULES ? ruleSelect.value : 'score'));
   brothId = isDailyChallenge ? ['clear', 'mala', 'miso'][dailyChallengeSeed % 3] : (brothSelect.value in BROTHS ? brothSelect.value : 'clear');
@@ -1346,7 +844,7 @@ function startGame(mode = 'challenge', daily = false) {
   simulationTimeMs = 0;
   boilingNow = false;
   spoonStreak = 0;
-  lastSpoonUse = 0;
+  lastSpoonUse = null;
   lastCountdownSecond = null;
   scooped = { meat: 0, veg: 0, oil: 0, bone: 0, debris: 0, boneHits: 0, fail: 0 };
   correctActionStreak = 0;
@@ -1378,7 +876,7 @@ function startGame(mode = 'challenge', daily = false) {
   updateEventDisplay();
   if (boilingNow) playSound('boil');
   updateMethodDisplay();
-  lastFrameTime = 0;
+  lastFrameTime = performance.now();
   canvas.focus({ preventScroll: true });
   cancelAnimationFrame(animationFrame);
   animationFrame = requestAnimationFrame(loop);
@@ -1399,7 +897,7 @@ function pauseGame() {
   if (gameMode === 'practice' && chillCooldownUntil > now) chillCooldownRemainingMs = chillCooldownUntil - now;
   running = false;
   cancelAnimationFrame(animationFrame);
-  lastFrameTime = 0;
+  lastFrameTime = null;
   updateTimerDisplay();
   pauseBtn.textContent = '繼續';
   pauseBtn.setAttribute('aria-pressed', 'true');
@@ -1420,7 +918,7 @@ function resumeGame() {
     chillCooldownUntil = now + chillCooldownRemainingMs;
     chillCooldownRemainingMs = 0;
   }
-  lastFrameTime = 0;
+  lastFrameTime = now;
   pauseBtn.textContent = '暫停';
   pauseBtn.setAttribute('aria-pressed', 'false');
   updateMethodDisplay(now);
