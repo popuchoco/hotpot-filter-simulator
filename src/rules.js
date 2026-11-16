@@ -8,6 +8,10 @@ import {
   TOOL_SHAPE_REFERENCE_POT_RADIUS, scaledToolShape,
   VEG_SOUP_LOSS_MULTIPLIER, WRONG_TOOL_BASE_PENALTY, WRONG_TOOL_PENALTY_PER_RADIUS
 } from './config.js';
+import {
+  CLEAR_RULE_DURATION_MS, COMBO_MAX, COMBO_STEP, COMBO_WINDOW_MS,
+  WAVE_CLEAR_BONUS_PER_S
+} from './balance.js';
 import { hashSeed } from './rng.js';
 
 // Finds the true closest point on the filled ellipse using the standard Lagrange
@@ -186,4 +190,28 @@ export function resultComment({
   if (score >= RESULT_COMMENT_HIGH_SCORE_THRESHOLD) return '撈得不錯，工具選擇也很準確！再留意鍋裡剩下的食材。';
   if (score >= RESULT_COMMENT_MID_SCORE_THRESHOLD) return '已經上手了，工具選得不錯；試著更快切換到合適的工具。';
   return '再試一次，先用濾網清理肉沫，再處理蔬菜和浮油。';
+}
+
+export function comboMultiplier(combo) {
+  const count = Math.max(0, Number(combo) || 0);
+  return 1 + Math.min(count, COMBO_MAX) * COMBO_STEP;
+}
+
+export function nextCombo(prevCombo, lastSuccessMs, nowMs, success) {
+  if (!success) return 0;
+  const previous = Math.max(0, Number(prevCombo) || 0);
+  const elapsed = Number(nowMs) - Number(lastSuccessMs);
+  return Number.isFinite(elapsed) && elapsed >= 0 && elapsed <= COMBO_WINDOW_MS
+    ? previous + 1
+    : 1;
+}
+
+// Clear-wave seconds are rounded down, so a partial second earns no bonus.
+export function waveClearBonus(msUntilNextWave) {
+  return Math.max(0, Math.floor((Number(msUntilNextWave) || 0) / 1_000))
+    * WAVE_CLEAR_BONUS_PER_S;
+}
+
+export function clearRuleDurationMs(stageId) {
+  return CLEAR_RULE_DURATION_MS[stageId];
 }
