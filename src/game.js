@@ -1,7 +1,21 @@
-// Game state, input, UI, persistence, and score flow; rendering/physics are separate scripts.
-if (typeof drawSoup !== 'function' || typeof drawParticles !== 'function' || typeof updatePhysics !== 'function') {
-  throw new Error('Game scripts are missing or out of order: load renderer.js and physics.js before game.js.');
-}
+// Game state, input, UI, persistence, and score flow.
+import * as CONFIG from './config.js';
+import { drawParticles, drawSoup, drawTool } from './renderer.js';
+import { updatePhysics } from './physics.js';
+import {
+  achievementConditions, applySoupLoss, categoryCleanliness, getHitParticles,
+  isGoodToolFor, missionSuccess, overallCleanliness, resultComment as gradeResultComment,
+  scoreParticle, soupLossForParticle, wrongToolPenalty
+} from './rules.js';
+import { dailyChallengeDescriptor as parseDailyChallengeDescriptor, dailyDateTaipei, formatSeed, hashSeed, mulberry32 } from './rng.js';
+
+const {
+  ACHIEVEMENTS, ACHIEVEMENTS_KEY, BEST_SCORE_KEY, BIG_PARTICLE_RADIUS, BOIL_CYCLE_MS, BOIL_DURATION_MS,
+  BROTHS, CHILL_COST_MS, CHILL_EFFECT_MS, CHILL_PRACTICE_COOLDOWN_MS, FRAME_SCALE_MAX,
+  PARTICLE_RENDER_TYPES, POT_SKINS, PRACTICE_STAGE, PREVIOUS_RESULTS_KEY, RULES,
+  SETTINGS_KEY, SPOON_STREAK_MAX, SPOON_STREAK_WINDOW_MS, STAGE_RECORDS_KEY,
+  STAGES, TOOL_CONFIG, WRONG_TOOL_REMOVE_CHANCE, WRONG_TOOL_SOUP_LOSS_ML
+} = CONFIG;
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const scoreEl = document.getElementById('score');
@@ -36,116 +50,6 @@ const achievementList = document.getElementById('achievementList');
 const contrastToggle = document.getElementById('contrastToggle');
 const motionToggle = document.getElementById('motionToggle');
 
-const BEST_SCORE_KEY = 'hotpot-filter-simulator.best-score.v1';
-const STAGE_RECORDS_KEY = 'hotpot-filter-simulator.stage-records.v1';
-const PREVIOUS_RESULTS_KEY = 'hotpot-filter-simulator.previous-results.v1';
-const ACHIEVEMENTS_KEY = 'hotpot-filter-simulator.achievements.v1';
-const SETTINGS_KEY = 'hotpot-filter-simulator.settings.v1';
-const CHILL_PRACTICE_COOLDOWN_MS = 25_000;
-const CHILL_EFFECT_MS = 14_000;
-const BOIL_CYCLE_MS = 14_000;
-const BOIL_DURATION_MS = 3_800;
-const FRAME_SCALE_MAX = 2;
-const SCORE_PER_RADIUS = 1.8;
-const SCORE_BASE = 3;
-const BONE_SCORE_BONUS = 18;
-const BIG_PARTICLE_RADIUS = 20;
-const BIG_OIL_SCORE_MULTIPLIER = 1.7;
-const BIG_VEG_SCORE_MULTIPLIER = 1.3;
-const CHILLED_OIL_SCORE_MULTIPLIER = 1.25;
-const VEG_SOUP_LOSS_MULTIPLIER = 1.5;
-const SPOON_STREAK_SOUP_LOSS_INCREMENT = .25;
-const SPOON_STREAK_WINDOW_MS = 2_000;
-const SPOON_STREAK_MAX = 4;
-const PARTICLE_RENDER_TYPES = Object.freeze(['oil', 'meat', 'veg', 'bone', 'debris']);
-const WRONG_TOOL_REMOVE_CHANCE = .45;
-const WRONG_TOOL_PENALTY_PER_RADIUS = .8;
-const WRONG_TOOL_BASE_PENALTY = 2;
-const WRONG_TOOL_SOUP_LOSS_ML = 2;
-const SOUP_LOSS_CAP_ML = 5_000;
-const OIL_GRID_CELL_SIZE = 64;
-const OIL_MERGE_BASE_RATE = .035;
-const OIL_MERGE_RATE_CAP = .12;
-const OIL_MERGE_BOIL_MULTIPLIER = 1.8;
-const OIL_MERGE_CAP = 43;
-const OIL_PARTICLE_RADIUS_CAP = 34;
-const OIL_MERGE_DISTANCE_FACTOR = .9;
-const OIL_ATTRACTION_FORCE = .012;
-const OIL_ATTRACTION_RANGE_FACTOR = 1.35;
-const OIL_ATTRACTION_BOIL_MULTIPLIER = 1.6;
-const BOIL_FLOW_FORCE = .028;
-const BOIL_RADIAL_FORCE_RATIO = .16;
-const MAX_PARTICLE_SPEED = 1.5;
-const BOUNDARY_REFLECTION_MULTIPLIER = 1.7;
-const RULES = {
-  score: { name: '限時衝分', description: '時間內盡量撈取，挑戰更高分數。' },
-  clear: { name: '全清挑戰', description: '限時清空整鍋；時間到仍有食材就算未完成。' },
-  perfect: { name: '無失誤挑戰', description: '限時撈取，只要選錯工具就會立即結束。' }
-};
-const BROTHS = {
-  clear: {
-    name: '清湯', description: '清湯顏色較淡，方便辨認浮油。',
-    colors: ['#fff2d2', '#e8d3a0', '#cfad70', '#ac7948'],
-    flow: 1, aggregation: 1, boilFactor: 1, flowColor: 'rgba(255,255,232,.34)'
-  },
-  mala: {
-    name: '麻辣', description: '沸騰較快、湯流更強；辣椒片會隨湯流漂散，細網較好處理。',
-    colors: ['#ffd193', '#ed9560', '#c95637', '#792c22'],
-    flow: 1.55, aggregation: 1.45, boilFactor: 1.3, flowColor: 'rgba(255,216,157,.48)'
-  },
-  miso: {
-    name: '味噌', description: '湯流較緩、油花聚集較慢；豆渣顆粒容易混在食材間，適合用細網。',
-    colors: ['#fff0b4', '#e4bf6c', '#bc8c3e', '#805329'],
-    flow: .72, aggregation: .72, boilFactor: .72, flowColor: 'rgba(255,247,202,.3)'
-  }
-};
-const POT_SKINS = {
-  steel: { name: '經典不鏽鋼鍋', outer: ['#f0ebdf', '#777267', '#292825', '#c4bdaf', '#4c4942', '#1c1b19', '#6d675c', '#252320'] },
-  jade: { name: '翡翠鍋', outer: ['#e6f0df', '#769079', '#263a32', '#b5c8a8', '#465c4b', '#18251f', '#64806a', '#213329'] },
-  copper: { name: '暖銅鍋', outer: ['#ffe0ba', '#ad6844', '#48291f', '#d79563', '#74452e', '#2d1d18', '#a76b49', '#3b241c'] }
-};
-const ACHIEVEMENTS = [
-  { id: 'first', name: '第一次開鍋', description: '完成一局遊戲。', skin: 'jade' },
-  { id: 'clean', name: '清鍋達人', description: '單局清潔度達 100%。', skin: 'copper' },
-  { id: 'accurate', name: '工具達人', description: '至少撈取 8 次，工具正確率達 90%。' },
-  { id: 'gentle', name: '惜湯高手', description: '成功撈取 8 份以上，湯汁損失不超過 20 mL。' },
-  { id: 'daily', name: '每日鍋友', description: '完成當日固定盤面挑戰；舊日期分享盤不計入。' },
-  { id: 'steady', name: '穩手撈料', description: '連續 5 次正確撈取，中途沒有工具失誤。' }
-];
-const STAGES = {
-  starter: {
-    name: '新手小鍋', durationMs: 50_000, counts: { meat: 24, veg: 7, oil: 16, bone: 1 },
-    vegetables: ['芋頭', '南瓜'], description: '份量較少、蔬菜種類較簡單，適合初次練習。'
-  },
-  home: {
-    name: '家常火鍋', durationMs: 40_000, counts: { meat: 44, veg: 12, oil: 32, bone: 2 },
-    vegetables: ['芋頭', '南瓜', '番茄', '馬鈴薯'], description: '標準份量，熟悉三種食材與工具搭配。'
-  },
-  feast: {
-    name: '熱鬧滿鍋', durationMs: 35_000, counts: { meat: 62, veg: 18, oil: 46, bone: 3 },
-    vegetables: ['南瓜', '番茄', '馬鈴薯'], description: '時間更短、食材更多，考驗切換工具與取捨。'
-  }
-};
-const PRACTICE_STAGE = {
-  name: '練習辨認', durationMs: 0, counts: { meat: 14, veg: 5, oil: 14, bone: 1 },
-  vegetables: ['芋頭', '南瓜', '番茄', '馬鈴薯']
-};
-const TOOL_CONFIG = {
-  spoon: {
-    name: '普通湯匙', radius: 43, types: ['oil'], scoreMultiplier: 1,
-    soupLossMl: 7, tip: '撈面積較大、速度快；但容易多帶湯。適合未凝固的大片浮油。'
-  },
-  holey: {
-    name: '有洞湯勺', radius: 36, types: ['veg', 'oil'], scoreMultiplier: .95,
-    soupLossMl: 3, tip: '孔洞讓湯流回鍋裡；接觸範圍中等，適合蔬菜和一般浮油。'
-  },
-  strainer: {
-    name: '細網撈沫勺', radius: 30, types: ['meat', 'debris'], scoreMultiplier: 1.1,
-    soupLossMl: 1, tip: '範圍較小、瞄準較精準，帶走湯汁少；適合肉沫和凝固油渣。'
-  }
-};
-const CHILL_COST_MS = 3_000;
-
 let currentTool = 'strainer';
 let score = 0;
 let remainingMs = 0;
@@ -173,8 +77,7 @@ let dailyChallengeSeed = null;
 let dailyChallengeDate = '';
 let sharedDailyChallenge = false;
 let isTodayDailyChallenge = false;
-let randomState = 0;
-let randomSeedActive = false;
+let seededRandom = null;
 let activeStage = STAGES.home;
 let currentStageId = 'home';
 let soupLossMl = 0;
@@ -198,6 +101,8 @@ let lastCountdownSecond = null;
 let spoonStreak = 0;
 let lastSpoonUse = null;
 let selectedSkin = 'steel';
+let endReason = null;
+let lastResult = null;
 
 function createParticleGroups() {
   return Object.fromEntries(PARTICLE_RENDER_TYPES.map(type => [type, []]));
@@ -307,13 +212,7 @@ function renderAchievements() {
 
 function unlockAchievementsForRun({ cleanliness, correctRate, attempts, successful, totalSoupLoss }) {
   const newlyUnlocked = [];
-  const conditions = {
-    first: true,
-    clean: cleanliness >= 100,
-    accurate: attempts >= 8 && correctRate >= 90,
-    gentle: successful >= 8 && totalSoupLoss <= 20,
-    daily: isTodayDailyChallenge
-  };
+  const conditions = achievementConditions({ cleanliness, correctRate, attempts, successful, totalSoupLoss, isTodayDailyChallenge });
   ACHIEVEMENTS.forEach(item => {
     if (conditions[item.id] && !unlockedAchievements.includes(item.id)) {
       unlockedAchievements.push(item.id);
@@ -353,12 +252,6 @@ function updateStageRecordDisplay() {
   bestScoreMenuEl.textContent = String(record);
 }
 
-function dailyDateTaipei() {
-  const parts = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
-  const value = Object.fromEntries(parts.map(part => [part.type, part.value]));
-  return `${value.year}${value.month}${value.day}`;
-}
-
 function formatDailyDate(value) {
   return /^\d{8}$/.test(value) ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}` : value;
 }
@@ -367,34 +260,12 @@ function seedSuffix(seed) {
   return formatSeed(seed).slice(-4).toUpperCase();
 }
 
-function hashSeed(value) {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i++) hash = Math.imul(hash ^ value.charCodeAt(i), 16777619);
-  return hash >>> 0 || 1;
-}
-
 function dailyChallengeDescriptor() {
-  const params = new URLSearchParams(window.location.search);
-  const sharedDate = params.get('daily');
-  const sharedSeed = Number(params.get('seed'));
-  if (/^\d{8}$/.test(sharedDate || '') && Number.isInteger(sharedSeed) && sharedSeed > 0 && sharedSeed <= 0xFFFFFFFF) {
-    return { date: sharedDate, seed: sharedSeed >>> 0, shared: true };
-  }
-  const date = dailyDateTaipei();
-  return { date, seed: hashSeed(`hotpot-filter-daily-${date}`), shared: false };
+  return parseDailyChallengeDescriptor(window.location.search);
 }
 
 function random() {
-  if (!randomSeedActive) return Math.random();
-  randomState = (randomState + 0x6D2B79F5) | 0;
-  let t = randomState;
-  t = Math.imul(t ^ (t >>> 15), t | 1);
-  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-}
-
-function formatSeed(seed) {
-  return (seed >>> 0).toString(36).toUpperCase();
+  return seededRandom ? seededRandom() : Math.random();
 }
 
 function resize() {
@@ -532,24 +403,11 @@ function updateCounts() {
   document.getElementById('debrisCount').textContent = scooped.debris;
 }
 
-function isGoodToolFor(particle, now = performance.now()) {
-  if (particle.type === 'oil' && isOilChilled(now)) return currentTool === 'strainer';
-  if (particle.type === 'bone') return currentTool === 'holey';
-  return TOOL_CONFIG[currentTool].types.includes(particle.type);
-}
-
 function tryScoop() {
   if (!running) return;
   const tool = TOOL_CONFIG[currentTool];
-  const caught = [];
-  const indices = [];
-  particles.forEach((p, i) => {
-    const distance = Math.hypot(p.x - mouse.x, p.y - mouse.y);
-    if (distance < tool.radius * .8 + p.r * .4) {
-      caught.push(p);
-      indices.push(i);
-    }
-  });
+  const caught = getHitParticles(particles, mouse.x, mouse.y, currentTool);
+  const indices = caught.map(particle => particles.indexOf(particle));
 
   if (!caught.length) {
     showHint('這裡沒有食材，試試靠近一點。');
@@ -572,17 +430,11 @@ function tryScoop() {
   const failuresBeforeScoop = scooped.fail;
   let crackedBone = false;
   caught.forEach((p, i) => {
-    const good = isGoodToolFor(p, now);
-      const isBig = p.r > BIG_PARTICLE_RADIUS;
+    const chilled = isOilChilled(now);
+    const good = isGoodToolFor(p, currentTool, chilled);
     if (good) {
-      let points = Math.round(p.r * SCORE_PER_RADIUS + SCORE_BASE);
-      if (p.type === 'bone') points += BONE_SCORE_BONUS;
-      if (p.type === 'oil' && isBig) points = Math.round(points * BIG_OIL_SCORE_MULTIPLIER);
-      if (p.type === 'veg' && isBig) points = Math.round(points * BIG_VEG_SCORE_MULTIPLIER);
-      if (p.type === 'oil' && isOilChilled(now)) points = Math.round(points * CHILLED_OIL_SCORE_MULTIPLIER);
-      gained += Math.round(points * tool.scoreMultiplier);
-      const spoonPenalty = currentTool === 'spoon' ? 1 + spoonStreak * SPOON_STREAK_SOUP_LOSS_INCREMENT : 1;
-      soupLossMl = Math.min(SOUP_LOSS_CAP_ML, soupLossMl + tool.soupLossMl * (p.type === 'veg' ? VEG_SOUP_LOSS_MULTIPLIER : 1) * spoonPenalty);
+      gained += scoreParticle(p, currentTool, { oilChilled: chilled });
+      soupLossMl = applySoupLoss(soupLossMl, soupLossForParticle(p, currentTool, spoonStreak));
       successfulActions++;
       if (p.type === 'bone') scooped.boneHits++;
       if (p.type === 'bone' && p.integrity > 1) {
@@ -595,12 +447,12 @@ function tryScoop() {
         removedMass[p.type] += p.mass || 1;
       }
     } else {
-      lost += Math.round(p.r * WRONG_TOOL_PENALTY_PER_RADIUS + WRONG_TOOL_BASE_PENALTY);
+      lost += wrongToolPenalty(p);
       scooped.fail++;
       if (random() < WRONG_TOOL_REMOVE_CHANCE) {
         remove.add(indices[i]);
         removedMass[p.type] += p.mass || 1;
-        soupLossMl = Math.min(SOUP_LOSS_CAP_ML, soupLossMl + WRONG_TOOL_SOUP_LOSS_ML);
+        soupLossMl = applySoupLoss(soupLossMl, WRONG_TOOL_SOUP_LOSS_ML);
       }
     }
   });
@@ -613,8 +465,8 @@ function tryScoop() {
 
   playSound(lost > 0 ? 'fail' : crackedBone ? 'boneCrack' : 'scoop');
   if (gained > lost) {
-    const bigBonus = caught.some(p => p.r > BIG_PARTICLE_RADIUS && isGoodToolFor(p, now));
-    const coldBonus = caught.some(p => p.type === 'oil' && isOilChilled(now) && isGoodToolFor(p, now));
+    const bigBonus = caught.some(p => p.r > BIG_PARTICLE_RADIUS && isGoodToolFor(p, currentTool, isOilChilled(now)));
+    const coldBonus = caught.some(p => p.type === 'oil' && isOilChilled(now) && isGoodToolFor(p, currentTool, isOilChilled(now)));
     showHint(coldBonus ? `凝固油花撈起！細網很合適 +${gained - lost}` : bigBonus ? `大塊撈起！${tool.name} +${gained - lost}` : `撈取成功 +${gained - lost}`);
   } else {
     showHint(`工具不合適，漏掉了… -${lost - gained}`);
@@ -645,8 +497,12 @@ function updateToolTip() {
   toolTip.textContent = `${TOOL_CONFIG[currentTool].tip}${spoonNote}${boneNote}`;
 }
 
+function isOilChilled(now = performance.now()) {
+  return chillUsed && now < chilledUntil;
+}
+
 function updateMethodDisplay(now = performance.now()) {
-  const chilled = chillUsed && now < chilledUntil;
+  const chilled = isOilChilled(now);
   document.querySelectorAll('.tool').forEach(button => {
     const locked = chilled && button.dataset.tool !== 'strainer';
     button.disabled = locked;
@@ -841,7 +697,10 @@ function loop(now) {
       spawnBrothDebris(1);
     }
   }
-  updatePhysics(frameScale);
+  updatePhysics(frameScale, {
+    particles, particleGroups, canvasWidth, canvasHeight, brothId, BROTHS,
+    boilingNow, reduceMotion, random, refreshParticleGroups
+  });
   drawSoup(now);
   drawParticles(now);
   drawTool();
@@ -860,8 +719,9 @@ function startGame(mode = 'challenge', daily = false) {
   currentStageId = isDailyChallenge ? 'home' : (stageSelect.value in STAGES ? stageSelect.value : 'home');
   challengeRule = isDailyChallenge ? 'score' : (mode === 'practice' ? 'score' : (ruleSelect.value in RULES ? ruleSelect.value : 'score'));
   brothId = isDailyChallenge ? ['clear', 'mala', 'miso'][dailyChallengeSeed % 3] : (brothSelect.value in BROTHS ? brothSelect.value : 'clear');
-  randomSeedActive = isDailyChallenge;
-  randomState = dailyChallengeSeed || 0;
+  seededRandom = isDailyChallenge ? mulberry32(dailyChallengeSeed || 0) : null;
+  endReason = null;
+  lastResult = null;
   activeStage = mode === 'practice' ? PRACTICE_STAGE : STAGES[currentStageId];
   activeDurationMs = mode === 'practice' ? 0 : activeStage.durationMs * (challengeRule === 'clear' ? 3 : 1);
   score = 0;
@@ -960,8 +820,7 @@ function resumeGame() {
 }
 
 function getCategoryCleanliness(type) {
-  if (!initialMass[type]) return null;
-  return Math.max(0, Math.min(100, Math.round(removedMass[type] / initialMass[type] * 100)));
+  return categoryCleanliness(initialMass, removedMass, type);
 }
 
 function formatCategoryCleanliness(type, label) {
@@ -972,6 +831,7 @@ function formatCategoryCleanliness(type, label) {
 function endGame(reason = 'timeout') {
   if (gameEnded) return;
   gameEnded = true;
+  endReason = reason;
   running = false;
   cancelAnimationFrame(animationFrame);
   remainingMs = 0;
@@ -979,17 +839,15 @@ function endGame(reason = 'timeout') {
   finalScoreEl.textContent = score;
 
   const remaining = getRemainingIngredientUnits();
-  const categoryRates = Object.fromEntries(['meat', 'veg', 'oil', 'bone', 'debris'].map(type => [type, getCategoryCleanliness(type)]));
-  const activeRates = Object.values(categoryRates).filter(rate => rate !== null);
+  const { categoryRates, cleanliness, hasTargets } = overallCleanliness(initialMass, removedMass);
   // No initial target means nothing was left dirty; do not penalize an absent category.
-  const cleanliness = activeRates.length ? Math.round(activeRates.reduce((sum, rate) => sum + rate, 0) / activeRates.length) : 100;
   const successful = scooped.meat + scooped.veg + scooped.oil + scooped.boneHits + scooped.debris;
   const attempts = successful + scooped.fail;
   const correctRate = attempts ? Math.round(successful / attempts * 100) : 0;
   const errorRate = attempts ? Math.round(scooped.fail / attempts * 100) : 0;
-  const clearedAll = particles.length === 0;
-  const missionWon = challengeRule === 'clear' ? clearedAll : challengeRule === 'perfect' ? reason !== 'mistake' : null;
-  cleanlinessEl.textContent = activeRates.length ? `${cleanliness}%` : '100%（無清除目標）';
+  const missionWon = missionSuccess(challengeRule, reason, particles);
+  lastResult = { reason, missionWon, cleanliness, categoryRates, remaining, successful, attempts, correctRate };
+  cleanlinessEl.textContent = hasTargets ? `${cleanliness}%` : '100%（無清除目標）';
 
   let newRecord = false;
   let recordScore = Number(stageRecords[currentStageId]) || 0;
@@ -1048,13 +906,7 @@ function endGame(reason = 'timeout') {
   }
 
   const newlyUnlocked = unlockAchievementsForRun({ cleanliness, correctRate, attempts, successful, totalSoupLoss: soupLossMl });
-  if (gameMode === 'practice') resultComment.textContent = '練習完成！可以換湯底、規則與工具再試；冷藏效果和冷卻時間都會依時間計算。';
-  else if (challengeRule === 'clear') resultComment.textContent = missionWon ? '全清成功！整鍋食材都已清乾淨。' : `全清挑戰未完成，還有 ${remaining} 份食材留在鍋中。`;
-  else if (challengeRule === 'perfect') resultComment.textContent = missionWon ? '無失誤完成！全程都選對工具。' : '挑戰結束：出現工具失誤，試著看清食材後再下手。';
-  else if (cleanliness >= 75) resultComment.textContent = '湯底清得很漂亮！眼力和工具都掌握得很好。';
-  else if (score >= 160) resultComment.textContent = '撈得不錯，再留意鍋裡還有哪些食材。';
-  else if (score >= 80) resultComment.textContent = '已經上手了，試著更快切換到合適的工具。';
-  else resultComment.textContent = '再試一次，先用濾網清理肉沫，再處理蔬菜和浮油。';
+  resultComment.textContent = gradeResultComment({ gameMode, challengeRule, missionWon, cleanliness, score, remaining });
   if (newlyUnlocked.length) resultComment.textContent += ` 新解鎖：${newlyUnlocked.join('、')}！`;
   shareBtn.classList.toggle('hidden', !isDailyChallenge);
   showScreen('result');
@@ -1125,6 +977,60 @@ function resetLocalRecords() {
   const button = document.getElementById('resetRecordsBtn');
   button.textContent = '已清除本機最高分';
   window.setTimeout(() => { button.textContent = '清除本機紀錄'; }, 2200);
+}
+
+function scoopAt(x, y) {
+  mouse.x = x;
+  mouse.y = y;
+  tryScoop();
+}
+
+function startFromTest(options = {}) {
+  const stage = options.stage in STAGES ? options.stage : 'home';
+  const rule = options.rule in RULES ? options.rule : 'score';
+  const broth = options.broth in BROTHS ? options.broth : 'clear';
+  stageSelect.value = stage;
+  ruleSelect.value = rule;
+  brothSelect.value = broth;
+  if (options.mode === 'daily') startGame('challenge', true);
+  else startGame(options.mode === 'practice' ? 'practice' : 'challenge');
+}
+
+function installTestHook() {
+  if (new URLSearchParams(window.location.search).get('test') !== '1') return;
+  const state = {};
+  const getters = {
+    particles: () => particles,
+    score: () => score,
+    scooped: () => scooped,
+    soupLossMl: () => soupLossMl,
+    simulationTimeMs: () => simulationTimeMs,
+    running: () => running,
+    gameEnded: () => gameEnded,
+    currentTool: () => currentTool,
+    cleanliness: () => lastResult?.cleanliness ?? overallCleanliness(initialMass, removedMass).cleanliness,
+    resultComment: () => resultComment.textContent,
+    missionResult: () => lastResult?.missionWon ?? null,
+    endReason: () => endReason,
+    unlockedAchievements: () => unlockedAchievements,
+    brothId: () => brothId,
+    challengeRule: () => challengeRule,
+    gameMode: () => gameMode
+  };
+  Object.entries(getters).forEach(([key, get]) => Object.defineProperty(state, key, { enumerable: true, get }));
+  window.__hotpot = {
+    state,
+    TOOL_CONFIG,
+    selectTool,
+    scoopAt,
+    start: startFromTest,
+    pause: pauseGame,
+    resume: resumeGame,
+    activateChill: activateChillMethod,
+    end: endGame,
+    isOilChilled,
+    hashSeed
+  };
 }
 
 // Menu and game controls.
@@ -1234,3 +1140,9 @@ window.addEventListener('resize', () => {
 
 updateMenuDescriptions();
 showScreen('menu');
+installTestHook();
+
+export {
+  boilingNow, brothId, canvasHeight, canvasWidth, ctx, currentTool, highContrast,
+  isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin, updateToolTip
+};

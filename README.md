@@ -24,9 +24,23 @@
 
 ## 程式結構
 
-- `game.js`：選單、遊戲狀態、輸入、結果與本機資料。
-- `renderer.js`：Canvas 鍋具、食材、工具與效果繪製。
-- `physics.js`：食材移動、湯流、油滴空間分區與合併。
+- `src/game.js`：選單、遊戲狀態、輸入、結果與本機資料；以原生 ES module 載入。
+- `src/renderer.js`、`src/physics.js`：Canvas 繪製與不依賴 DOM 的粒子物理。
+- `src/config.js`、`src/rules.js`、`src/rng.js`：共用設定、純規則函式與可重現亂數。
+- `tools/`、`tests/`：本機靜態伺服器、Playwright 瀏覽器檢查、bot 評估與 Vitest 單元測試。
+
+常用指令：
+
+```bash
+npm run serve       # 在 http://127.0.0.1:8765 預覽
+npm run lint        # ESLint
+npm test            # Vitest
+npm run smoke       # 五種視窗尺寸的瀏覽器流程
+npm run eval:quick  # 小型 bot 評估
+npm run eval:full   # cfgA–cfgG，每組三局
+```
+
+Playwright 會使用 `CHROME_PATH` 指定的 Chrome，或 `/usr/bin/google-chrome`；若兩者皆無，請先執行 `npx playwright-core install chromium`。
 
 ## GitHub Pages 部署
 
@@ -38,12 +52,13 @@
 
 ## 本機預覽
 
-可直接開啟 `index.html`，或在專案目錄執行：
+在專案目錄執行：
 
 ```bash
-npx serve .
-# 或 python -m http.server
+npm run serve
 ```
+
+GitHub Pages 仍直接提供原始 HTML、CSS 與 JavaScript，無需建置或 bundler。
 
 ## 授權
 

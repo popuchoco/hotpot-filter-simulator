@@ -1,0 +1,11 @@
+[
+  { "vp": { "width": 1920, "height": 1080 }, "stage": "home", "rule": "score", "broth": "clear", "strategy": "smart" },
+  { "vp": { "width": 1920, "height": 1080 }, "stage": "home", "rule": "score", "broth": "clear", "strategy": "naive" },
+  { "vp": { "width": 1920, "height": 1080 }, "stage": "home", "rule": "score", "broth": "clear", "strategy": "spoonSpam" },
+  { "vp": { "width": 1920, "height": 1080 }, "stage": "home", "rule": "clear", "broth": "clear", "strategy": "smart" },
+  { "vp": { "width": 1920, "height": 1080 }, "stage": "home", "rule": "clear", "broth": "clear", "strategy": "naive" },
+  { "vp": { "width": 1920, "height": 1080 }, "stage": "home", "rule": "clear", "broth": "clear", "strategy": "spoonSpam" },
+  { "vp": { "width": 1920, "height": 1080 }, "stage": "home", "rule": "perfect", "broth": "clear", "strategy": "smart" },
+  { "vp": { "width": 1920, "height": 1080 }, "stage": "home", "rule": "perfect", "broth": "clear", "strategy": "naive" },
+  { "vp": { "width": 1920, "height": 1080 }, "stage": "home", "rule": "perfect", "broth": "clear", "strategy": "spoonSpam" }
+]

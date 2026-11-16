@@ -1,6 +1,17 @@
-// Particle physics functions. Depends on game.js globals: particles/particleGroups,
-// canvas dimensions, brothId/BROTHS, boilingNow, reduceMotion, random(), and physics constants.
-function updatePhysics(frameScale) {
+import {
+  BOIL_FLOW_FORCE, BOIL_RADIAL_FORCE_RATIO, BOUNDARY_REFLECTION_MULTIPLIER,
+  MAX_PARTICLE_SPEED, OIL_ATTRACTION_BOIL_MULTIPLIER, OIL_ATTRACTION_FORCE,
+  OIL_ATTRACTION_RANGE_FACTOR, OIL_GRID_CELL_SIZE, OIL_MERGE_BASE_RATE,
+  OIL_MERGE_BOIL_MULTIPLIER, OIL_MERGE_CAP, OIL_MERGE_DISTANCE_FACTOR,
+  OIL_MERGE_RATE_CAP, OIL_PARTICLE_RADIUS_CAP
+} from './config.js';
+
+// Pure particle simulation. The caller supplies the current game state and RNG.
+export function updatePhysics(frameScale, state) {
+  const {
+    particles, particleGroups, canvasWidth, canvasHeight, brothId, BROTHS,
+    boilingNow, reduceMotion, random, refreshParticleGroups
+  } = state;
   const size = Math.min(canvasWidth, canvasHeight);
   const cx = canvasWidth / 2;
   const cy = canvasHeight / 2;

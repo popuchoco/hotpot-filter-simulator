@@ -1,6 +1,9 @@
-// Canvas rendering functions. Depends on game.js globals: ctx/canvas dimensions,
-// particles/particleGroups, mouse, brothId/BROTHS, boilingNow, reduceMotion,
-// highContrast, selectedSkin/POT_SKINS, currentTool/TOOL_CONFIG, and isOilChilled().
+// Canvas rendering functions. Game state is imported explicitly from game.js.
+import {
+  boilingNow, brothId, canvasHeight, canvasWidth, ctx, currentTool, highContrast,
+  isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin, updateToolTip
+} from './game.js';
+import { BROTHS, POT_SKINS, TOOL_CONFIG } from './config.js';
 const POT_GEOMETRY = Object.freeze({
   outerRadiusX: .42,
   outerRadiusY: .93,
@@ -61,7 +64,7 @@ function drawHandle(cx, cy, rx, ry, side) {
   ctx.restore();
 }
 
-function drawSoup(now = 0) {
+export function drawSoup(now = 0) {
   const w = canvasWidth;
   const h = canvasHeight;
   if (!w || !h) return;
@@ -187,10 +190,6 @@ function drawSoup(now = 0) {
   ctx.beginPath();
   ctx.ellipse(cx, cy, rx * .957, ry * .957, 0, Math.PI * 1.08, Math.PI * 1.88);
   ctx.stroke();
-}
-
-function isOilChilled(now = performance.now()) {
-  return chillUsed && now < chilledUntil;
 }
 
 function drawOil(p, now = performance.now()) {
@@ -367,7 +366,7 @@ function drawDebris(p) {
   ctx.restore();
 }
 
-function drawParticles(now = performance.now()) {
+export function drawParticles(now = performance.now()) {
   // Oil sits on the surface, meat and vegetables catch the light above it.
   particleGroups.oil.forEach(p => drawOil(p, now));
   particleGroups.meat.forEach(drawMeat);
@@ -376,7 +375,7 @@ function drawParticles(now = performance.now()) {
   particleGroups.debris.forEach(drawDebris);
 }
 
-function drawTool() {
+export function drawTool() {
   const scoopRadius = TOOL_CONFIG[currentTool].radius;
   ctx.save();
   ctx.translate(mouse.x, mouse.y);
