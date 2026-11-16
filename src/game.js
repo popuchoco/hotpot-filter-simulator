@@ -57,6 +57,43 @@ const contrastToggle = document.getElementById('contrastToggle');
 const motionToggle = document.getElementById('motionToggle');
 const practiceWavesToggle = document.getElementById('practiceWavesToggle');
 
+const renderedText = new WeakMap();
+const renderedAttributes = new WeakMap();
+
+function setText(element, value) {
+  const text = String(value);
+  if (!renderedText.has(element)) renderedText.set(element, element.textContent);
+  const previous = renderedText.get(element);
+  if (previous === text) return false;
+  element.textContent = text;
+  renderedText.set(element, text);
+  return true;
+}
+
+function setAttr(element, name, value) {
+  const rendered = renderedAttributes.get(element) ?? new Map();
+  renderedAttributes.set(element, rendered);
+  const next = String(value);
+  const previous = rendered.has(name) ? rendered.get(name) : element.getAttribute(name);
+  if (previous === next) return false;
+  element.setAttribute(name, next);
+  rendered.set(name, next);
+  renderedAttributes.set(element, rendered);
+  return true;
+}
+
+function setDisabled(element, disabled) {
+  if (element.disabled === disabled) return false;
+  element.disabled = disabled;
+  return true;
+}
+
+function setClass(element, name, enabled) {
+  if (element.classList.contains(name) === enabled) return false;
+  element.classList.toggle(name, enabled);
+  return true;
+}
+
 let currentTool = 'strainer';
 let score = 0;
 let remainingMs = 0;
@@ -126,6 +163,8 @@ let lastPlayTime = null;
 let selectedSkin = 'steel';
 let endReason = null;
 let lastResult = null;
+let lastMethodDisplay = null;
+let lastTimerFillScale = null;
 
 function createParticleGroups() {
   return Object.fromEntries(PARTICLE_RENDER_TYPES.map(type => [type, []]));
@@ -141,7 +180,7 @@ function currentPotRadius() {
   return Math.min(canvasWidth, canvasHeight) * CONFIG.POT_RADIUS_RATIO;
 }
 
-bestScoreMenuEl.textContent = bestScore;
+setText(bestScoreMenuEl, bestScore);
 initializeSettings();
 renderAchievements();
 updateStageRecordDisplay();
@@ -271,19 +310,19 @@ function unlockAchievement(id, notify = true) {
 }
 
 function showAchievementToast(message) {
-  hintEl.textContent = message;
+  setText(hintEl, message);
   hintEl.classList.add('achievement-toast');
   clearTimeout(showHint.timer);
   showHint.timer = window.setTimeout(() => {
     hintEl.classList.remove('achievement-toast');
-    if (hintEl.textContent === message) hintEl.textContent = '';
+    if (hintEl.textContent === message) setText(hintEl, '');
   }, 3_500);
 }
 
 function updateStageRecordDisplay() {
   const stageId = stageSelect.value in STAGES ? stageSelect.value : 'home';
   const record = Number(stageRecords[stageId]) || 0;
-  bestScoreMenuEl.textContent = String(record);
+  setText(bestScoreMenuEl, record);
 }
 
 function formatDailyDate(value) {
@@ -549,17 +588,18 @@ function scheduleWave(boilEvent = false) {
 }
 
 function updateCounts() {
-  meatCountEl.textContent = scooped.meat;
-  vegCountEl.textContent = scooped.veg;
-  oilCountEl.textContent = scooped.oil;
-  document.getElementById('boneCount').textContent = scooped.bone;
-  document.getElementById('debrisCount').textContent = scooped.debris;
+  setText(meatCountEl, scooped.meat);
+  setText(vegCountEl, scooped.veg);
+  setText(oilCountEl, scooped.oil);
+  setText(document.getElementById('boneCount'), scooped.bone);
+  setText(document.getElementById('debrisCount'), scooped.debris);
 }
 
 function tryScoop() {
   if (!running) return;
   scoopAttempts++;
   const tool = TOOL_CONFIG[currentTool];
+  const oldSpoonStreak = spoonStreak;
   const now = performance.now();
   const chilled = isOilChilled(now);
   const scoopableParticles = getScoopableParticles();
@@ -633,7 +673,7 @@ function tryScoop() {
     }
   }
   score = Math.max(0, score + Math.round(gained * comboBonus) - lost);
-  scoreEl.textContent = score;
+  setText(scoreEl, score);
   updateCounts();
 
   playSound(primaryFailed ? 'fail' : crackedBone ? 'boneCrack' : 'scoop');
@@ -656,13 +696,13 @@ function tryScoop() {
   } else if (scooped.fail > failuresBeforeScoop) {
     correctActionStreak = 0;
   }
-  updateToolTip();
+  if (spoonStreak !== oldSpoonStreak) updateToolTip();
   if (scooped.fail === failuresBeforeScoop && successfulActions > 0) successfulScoops++;
   if (waveEnabled && particles.length === 0) {
     const bonus = waveClearBonus(waveState.nextWaveAtMs - simulationTimeMs);
     waveClears++;
     score += bonus;
-    scoreEl.textContent = score;
+    setText(scoreEl, score);
     if (bonus > 0) showHint(`清波獎勵 +${bonus} 分！`);
     scheduleWave();
   }
@@ -681,7 +721,7 @@ function tryScoop() {
 function updateToolTip() {
   const spoonNote = currentTool === 'spoon' ? ` 普通湯匙連續撈取 ${spoonStreak} 次；繼續使用會增加帶走的湯汁（切換工具會歸零）。` : '';
   const boneNote = currentTool === 'holey' ? ' 骨頭需要成功撈取兩次才會清除。' : '';
-  toolTip.textContent = `${TOOL_CONFIG[currentTool].tip}${spoonNote}${boneNote}`;
+  setText(toolTip, `${TOOL_CONFIG[currentTool].tip}${spoonNote}${boneNote}`);
 }
 
 function isOilChilled(now = performance.now()) {
@@ -690,34 +730,44 @@ function isOilChilled(now = performance.now()) {
 
 function updateMethodDisplay(now = performance.now()) {
   const chilled = isOilChilled(now);
-  document.querySelectorAll('.tool').forEach(button => {
-    const locked = chilled && button.dataset.tool !== 'strainer';
-    button.disabled = locked;
-    button.title = locked ? '浮油已凝固；請先用細網撈取，凝固效果結束後再切換工具。' : '';
-  });
+  let display;
   if (chilled) {
     const left = `（${Math.ceil((chilledUntil - now) / 1000)} 秒）`;
-    chillBtn.textContent = '❄️ 浮油凝固中';
-    chillBtn.disabled = true;
-    methodStatus.textContent = `凝油效果中，僅能用細網撈油 ${left}`;
-    methodStatus.classList.add('active');
+    display = {
+      state: 'chilled', left, buttonText: '❄️ 浮油凝固中', buttonDisabled: true,
+      statusText: `凝油效果中，僅能用細網撈油 ${left}`, active: true
+    };
   } else if (gameMode === 'practice' && now < chillCooldownUntil) {
     const left = Math.ceil((chillCooldownUntil - now) / 1000);
-    chillBtn.textContent = '❄️ 冷藏冷卻中';
-    chillBtn.disabled = true;
-    methodStatus.textContent = `練習冷卻 ${left} 秒；效果本身維持 14 秒。`;
-    methodStatus.classList.remove('active');
+    display = {
+      state: 'practice-cooldown', left, buttonText: '❄️ 冷藏冷卻中', buttonDisabled: true,
+      statusText: `練習冷卻 ${left} 秒；效果本身維持 14 秒。`, active: false
+    };
   } else if (gameMode === 'challenge' && chillUsed) {
-    chillBtn.textContent = '❄️ 冷藏已使用';
-    chillBtn.disabled = true;
-    methodStatus.textContent = '凝油效果結束；限時挑戰每局只能預備一次。';
-    methodStatus.classList.remove('active');
+    display = {
+      state: 'challenge-used', left: 0, buttonText: '❄️ 冷藏已使用', buttonDisabled: true,
+      statusText: '凝油效果結束；限時挑戰每局只能預備一次。', active: false
+    };
   } else {
-    chillBtn.textContent = '❄️ 冷藏凝油（預備）';
-    chillBtn.disabled = !running || !isOilChilled(now) && gameMode === 'practice' && now < chillCooldownUntil;
-    methodStatus.textContent = gameMode === 'challenge' ? '會消耗 3 秒，凝固效果維持 14 秒。' : '練習模式每 25 秒可預備一次，凝固維持 14 秒。';
-    methodStatus.classList.remove('active');
+    display = {
+      state: 'ready', left: 0, buttonText: '❄️ 冷藏凝油（預備）', buttonDisabled: !running,
+      statusText: gameMode === 'challenge' ? '會消耗 3 秒，凝固效果維持 14 秒。' : '練習模式每 25 秒可預備一次，凝固維持 14 秒。',
+      active: false
+    };
   }
+  const signature = JSON.stringify([gameMode, running, chilled, display]);
+  if (signature === lastMethodDisplay) return;
+  lastMethodDisplay = signature;
+
+  document.querySelectorAll('.tool').forEach(button => {
+    const locked = chilled && button.dataset.tool !== 'strainer';
+    setDisabled(button, locked);
+    setAttr(button, 'title', locked ? '浮油已凝固；請先用細網撈取，凝固效果結束後再切換工具。' : '');
+  });
+  setText(chillBtn, display.buttonText);
+  setDisabled(chillBtn, display.buttonDisabled);
+  setText(methodStatus, display.statusText);
+  setClass(methodStatus, 'active', display.active);
 }
 
 function selectTool(toolId) {
@@ -727,6 +777,8 @@ function selectTool(toolId) {
     playSound('fail');
     return;
   }
+  const previousTool = currentTool;
+  const previousSpoonStreak = spoonStreak;
   if (toolId !== 'spoon') {
     spoonStreak = 0;
     lastSpoonUse = null;
@@ -734,10 +786,10 @@ function selectTool(toolId) {
   currentTool = toolId;
   document.querySelectorAll('.tool').forEach(button => {
     const active = button.dataset.tool === currentTool;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-pressed', String(active));
+    setClass(button, 'active', active);
+    setAttr(button, 'aria-pressed', String(active));
   });
-  updateToolTip();
+  if (currentTool !== previousTool || spoonStreak !== previousSpoonStreak) updateToolTip();
 }
 
 function activateChillMethod() {
@@ -770,11 +822,11 @@ function activateChillMethod() {
 }
 
 function showHint(message) {
-  hintEl.classList.remove('achievement-toast');
-  hintEl.textContent = message;
+  setClass(hintEl, 'achievement-toast', false);
+  setText(hintEl, message);
   clearTimeout(showHint.timer);
   showHint.timer = setTimeout(() => {
-    if (hintEl.textContent === message) hintEl.textContent = '';
+    if (hintEl.textContent === message) setText(hintEl, '');
   }, 1500);
 }
 
@@ -842,31 +894,38 @@ function currentBoilState() {
 
 function updateEventDisplay() {
   const broth = BROTHS[brothId];
-  eventBanner.classList.toggle('active', boilingNow);
-  eventBanner.textContent = boilingNow
+  setClass(eventBanner, 'active', boilingNow);
+  setText(eventBanner, boilingNow
     ? `🔥 ${broth.name}沸騰湯流！食材移動加快，油花更容易聚集${brothId === 'mala' ? '，辣椒片也會漂散' : brothId === 'miso' ? '，豆渣顆粒隨湯流散開' : ''}`
-    : `${broth.name}湯面平穩｜留意下一波沸騰湯流${brothId === 'miso' ? '；豆渣顆粒混在食材間' : ''}`;
+    : `${broth.name}湯面平穩｜留意下一波沸騰湯流${brothId === 'miso' ? '；豆渣顆粒混在食材間' : ''}`);
 }
 
 function updateTimerDisplay() {
+  let fillScale;
   if (gameMode === 'practice') {
-    timeDisplay.textContent = '∞';
-    timeDisplay.classList.remove('warn');
-    timerFill.style.transform = 'scaleX(1)';
-    return;
+    setText(timeDisplay, '∞');
+    setClass(timeDisplay, 'warn', false);
+    fillScale = 1;
+  } else {
+    const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
+    setText(timeDisplay, seconds);
+    setClass(timeDisplay, 'warn', seconds <= 8);
+    fillScale = Math.max(0, remainingMs / activeDurationMs);
   }
-  const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
-  timeDisplay.textContent = String(seconds);
-  timeDisplay.classList.toggle('warn', seconds <= 8);
-  timerFill.style.transform = `scaleX(${Math.max(0, remainingMs / activeDurationMs)})`;
+  if (lastTimerFillScale === null || Math.abs(fillScale - lastTimerFillScale) >= 0.005
+    || fillScale === 0 || fillScale === 1) {
+    const transform = `scaleX(${fillScale})`;
+    if (timerFill.style.transform !== transform) timerFill.style.transform = transform;
+    lastTimerFillScale = fillScale;
+  }
 }
 
 function updateTimerLabel() {
   const label = gameMode === 'practice'
     ? `${BROTHS[brothId].name}｜練習模式`
     : `剩餘時間｜${isDailyChallenge ? `${dailyChallengeDate} 每日挑戰` : `${activeStage.name} · ${RULES[challengeRule].name}`}｜${BROTHS[brothId].name}`;
-  timerLabel.textContent = challengeRule === 'perfect' ? `${label}｜剩餘命數 ${lives}` : label;
-  timerLabel.setAttribute('aria-live', challengeRule === 'perfect' ? 'polite' : 'off');
+  setText(timerLabel, challengeRule === 'perfect' ? `${label}｜剩餘命數 ${lives}` : label);
+  setAttr(timerLabel, 'aria-live', challengeRule === 'perfect' ? 'polite' : 'off');
 }
 
 function loop(now) {
@@ -917,6 +976,7 @@ function loop(now) {
 }
 
 function startGame(mode = 'challenge', daily = false) {
+  const toolTipStateChanged = currentTool !== 'strainer' || spoonStreak !== 0;
   gameMode = mode;
   isDailyChallenge = mode === 'challenge' && daily;
   const dailyInfo = isDailyChallenge ? dailyChallengeDescriptor() : null;
@@ -967,16 +1027,16 @@ function startGame(mode = 'challenge', daily = false) {
   lastCountdownSecond = null;
   scooped = { meat: 0, veg: 0, oil: 0, bone: 0, debris: 0, boneHits: 0, fail: 0 };
   correctActionStreak = 0;
-  scoreEl.textContent = '0';
+  setText(scoreEl, '0');
   updateTimerLabel();
   updateTimerDisplay();
   updateCounts();
   currentTool = 'strainer';
   document.querySelectorAll('.tool').forEach(button => {
     const active = button.dataset.tool === currentTool;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-pressed', String(active));
-    button.disabled = false;
+    setClass(button, 'active', active);
+    setAttr(button, 'aria-pressed', String(active));
+    setDisabled(button, false);
   });
   shareBtn.classList.toggle('hidden', !isDailyChallenge);
   showScreen('game');
@@ -995,9 +1055,9 @@ function startGame(mode = 'challenge', daily = false) {
   mouse.y = canvasHeight / 2;
   running = true;
   lastPlayTime = performance.now();
-  pauseBtn.textContent = '暫停';
-  pauseBtn.setAttribute('aria-pressed', 'false');
-  updateToolTip();
+  setText(pauseBtn, '暫停');
+  setAttr(pauseBtn, 'aria-pressed', 'false');
+  if (toolTipStateChanged) updateToolTip();
   if (mode === 'challenge') deadline = performance.now() + remainingMs;
   boilingNow = currentBoilState();
   updateEventDisplay();
@@ -1007,9 +1067,9 @@ function startGame(mode = 'challenge', daily = false) {
   canvas.focus({ preventScroll: true });
   cancelAnimationFrame(animationFrame);
   animationFrame = requestAnimationFrame(loop);
-  if (mode === 'practice') hintEl.textContent = '先辨認食材，再選工具；骨頭要用有洞湯勺撈兩次。';
-  else if (isDailyChallenge) hintEl.textContent = `${sharedDailyChallenge ? `分享盤面（原始日期 ${formatDailyDate(dailyChallengeDate)}）` : `今日固定盤面｜${formatDailyDate(dailyChallengeDate)}`}｜${BROTHS[brothId].name}｜種子尾碼 #${seedSuffix(dailyChallengeSeed)}。分享連結讓朋友玩同一盤！`;
-  else hintEl.textContent = `${activeStage.name}｜${RULES[challengeRule].name}開始！肉沫用細網、骨頭用有洞湯勺撈兩次。`;
+  if (mode === 'practice') setText(hintEl, '先辨認食材，再選工具；骨頭要用有洞湯勺撈兩次。');
+  else if (isDailyChallenge) setText(hintEl, `${sharedDailyChallenge ? `分享盤面（原始日期 ${formatDailyDate(dailyChallengeDate)}）` : `今日固定盤面｜${formatDailyDate(dailyChallengeDate)}`}｜${BROTHS[brothId].name}｜種子尾碼 #${seedSuffix(dailyChallengeSeed)}。分享連結讓朋友玩同一盤！`);
+  else setText(hintEl, `${activeStage.name}｜${RULES[challengeRule].name}開始！肉沫用細網、骨頭用有洞湯勺撈兩次。`);
 }
 
 function pauseGame() {
@@ -1027,8 +1087,8 @@ function pauseGame() {
   cancelAnimationFrame(animationFrame);
   lastFrameTime = null;
   updateTimerDisplay();
-  pauseBtn.textContent = '繼續';
-  pauseBtn.setAttribute('aria-pressed', 'true');
+  setText(pauseBtn, '繼續');
+  setAttr(pauseBtn, 'aria-pressed', 'true');
   updateMethodDisplay(now);
   showHint(gameMode === 'practice' ? '練習已暫停，冷藏效果與冷卻時間也會凍結。' : '已暫停，倒數、事件和凝油效果都停止了。');
 }
@@ -1048,10 +1108,10 @@ function resumeGame() {
     chillCooldownRemainingMs = 0;
   }
   lastFrameTime = now;
-  pauseBtn.textContent = '暫停';
-  pauseBtn.setAttribute('aria-pressed', 'false');
+  setText(pauseBtn, '暫停');
+  setAttr(pauseBtn, 'aria-pressed', 'false');
   updateMethodDisplay(now);
-  hintEl.textContent = '繼續撈取！';
+  setText(hintEl, '繼續撈取！');
   animationFrame = requestAnimationFrame(loop);
 }
 
@@ -1074,7 +1134,7 @@ function endGame(reason = 'timeout') {
   cancelAnimationFrame(animationFrame);
   remainingMs = 0;
   updateTimerDisplay();
-  finalScoreEl.textContent = score;
+  setText(finalScoreEl, score);
 
   const remaining = getRemainingIngredientUnits();
   const { categoryRates, cleanliness, hasTargets } = overallCleanliness(initialMass, removedMass);
@@ -1087,7 +1147,7 @@ function endGame(reason = 'timeout') {
     particles, initialMass, removedMass, failures: scooped.fail, lives
   });
   lastResult = { reason, missionWon, cleanliness, categoryRates, remaining, successful, attempts, correctRate, failures: scooped.fail, lives };
-  cleanlinessEl.textContent = hasTargets ? `${cleanliness}%` : '100%（無清除目標）';
+  setText(cleanlinessEl, hasTargets ? `${cleanliness}%` : '100%（無清除目標）');
 
   let newRecord = false;
   let recordScore = Number(stageRecords[currentStageId]) || 0;
@@ -1101,18 +1161,18 @@ function endGame(reason = 'timeout') {
     newRecord = true;
   }
   updateStageRecordDisplay();
-  personalBestEl.textContent = gameMode === 'practice'
+  setText(personalBestEl, gameMode === 'practice'
     ? '練習模式不列入關卡最高分。'
     : isDailyChallenge
       ? `每日挑戰種子 ${formatSeed(dailyChallengeSeed)}｜不覆蓋一般關卡紀錄。`
       : challengeRule === 'score'
         ? `${newRecord ? '本關新紀錄！' : '本關最高分'} ${recordScore}`
-        : '此挑戰規則不計入限時衝分紀錄。';
-  resultLabel.textContent = gameMode === 'practice'
+        : '此挑戰規則不計入限時衝分紀錄。');
+  setText(resultLabel, gameMode === 'practice'
     ? `練習模式｜${BROTHS[brothId].name}｜不限時`
     : isDailyChallenge
       ? `${sharedDailyChallenge ? '分享盤面' : '每日固定盤面'}｜原始日期 ${formatDailyDate(dailyChallengeDate)} · ${BROTHS[brothId].name} · 種子尾碼 #${seedSuffix(dailyChallengeSeed)}`
-      : `挑戰關卡｜${activeStage.name} · ${RULES[challengeRule].name} · ${BROTHS[brothId].name} · ${Math.round(activeDurationMs / 1000)} 秒`;
+      : `挑戰關卡｜${activeStage.name} · ${RULES[challengeRule].name} · ${BROTHS[brothId].name} · ${Math.round(activeDurationMs / 1000)} 秒`);
   const resultKey = `${currentStageId}:${challengeRule}:${brothId}`;
   const previousRun = gameMode === 'challenge' && !isDailyChallenge ? previousResults[resultKey] : null;
   const bestCompare = gameMode === 'challenge' && !isDailyChallenge && challengeRule === 'score'
@@ -1150,11 +1210,11 @@ function endGame(reason = 'timeout') {
   const newlyUnlocked = unlockAchievementsForRun({
     cleanliness, correctRate, attempts, successful, successfulScoops, playedMs, totalSoupLoss: soupLossMl
   });
-  resultComment.textContent = gradeResultComment({
+  const comment = gradeResultComment({
     gameMode, challengeRule, missionWon, cleanliness, score, correctRate, remaining,
     reason, failures: scooped.fail, lives
   });
-  if (newlyUnlocked.length) resultComment.textContent += ` 新解鎖：${newlyUnlocked.join('、')}！`;
+  setText(resultComment, newlyUnlocked.length ? `${comment} 新解鎖：${newlyUnlocked.join('、')}！` : comment);
   shareBtn.classList.toggle('hidden', !isDailyChallenge);
   showScreen('result');
 }
@@ -1170,25 +1230,25 @@ function updateMenuDescriptions() {
   const rule = RULES[ruleSelect.value] || RULES.score;
   const broth = BROTHS[brothSelect.value] || BROTHS.clear;
   const perfectOption = ruleSelect.querySelector('option[value="perfect"]');
-  perfectOption.textContent = `無失誤挑戰｜${CONFIG.PERFECT_LIVES} 條命，時間到仍有命即完成`;
-  stageDescription.textContent = `${stage.description} 食材：肉沫 ${stage.counts.meat}、蔬菜 ${stage.counts.veg}、浮油 ${stage.counts.oil}、骨頭 ${stage.counts.bone}。`;
-  ruleDescription.textContent = ruleSelect.value === 'clear'
+  setText(perfectOption, `無失誤挑戰｜${CONFIG.PERFECT_LIVES} 條命，時間到仍有命即完成`);
+  setText(stageDescription, `${stage.description} 食材：肉沫 ${stage.counts.meat}、蔬菜 ${stage.counts.veg}、浮油 ${stage.counts.oil}、骨頭 ${stage.counts.bone}。`);
+  setText(ruleDescription, ruleSelect.value === 'clear'
     ? `${rule.description} 時限：新手 75 秒、家常 60 秒、熱鬧 55 秒。`
     : ruleSelect.value === 'score'
       ? '時間內盡量撈取；會定時或低量分波補料，成功連擊與清波獎勵可提高得分。'
-      : rule.description;
-  brothDescription.textContent = broth.description;
+      : rule.description);
+  setText(brothDescription, broth.description);
   const durationMs = ruleSelect.value === 'clear' ? clearRuleDurationMs(stageSelect.value) : stage.durationMs;
-  document.getElementById('startBtn').textContent = `開始${rule.name}（${Math.round(durationMs / 1000)} 秒）`;
-  document.getElementById('stageRecommendation').textContent = unlockedAchievements.includes('first')
+  setText(document.getElementById('startBtn'), `開始${rule.name}（${Math.round(durationMs / 1000)} 秒）`);
+  setText(document.getElementById('stageRecommendation'), unlockedAchievements.includes('first')
     ? '推薦：想放慢節奏可先練習；熟悉工具後，再挑戰熱鬧滿鍋或更嚴格規則。'
-    : '初次遊玩建議先選「新手小鍋」或「練習辨認」；關卡不鎖定，可自由嘗試。';
+    : '初次遊玩建議先選「新手小鍋」或「練習辨認」；關卡不鎖定，可自由嘗試。');
   updateStageRecordDisplay();
   const daily = dailyChallengeDescriptor();
   const dailyBroth = BROTHS[['clear', 'mala', 'miso'][daily.seed % 3]];
-  document.getElementById('dailyBtn').textContent = daily.shared
+  setText(document.getElementById('dailyBtn'), daily.shared
     ? `挑戰分享盤面｜${formatDailyDate(daily.date)} · ${dailyBroth.name} · #${seedSuffix(daily.seed)}`
-    : `今日固定盤面｜${formatDailyDate(daily.date)} · ${dailyBroth.name} · #${seedSuffix(daily.seed)}`;
+    : `今日固定盤面｜${formatDailyDate(daily.date)} · ${dailyBroth.name} · #${seedSuffix(daily.seed)}`);
 }
 
 async function shareDailyChallenge() {
@@ -1226,7 +1286,7 @@ function resetLocalRecords() {
     window.localStorage.removeItem(BEST_SCORE_KEY);
     window.localStorage.removeItem(PREVIOUS_RESULTS_KEY);
   } catch { /* Clearing unavailable storage does not affect the current session. */ }
-  bestScoreMenuEl.textContent = '0';
+  setText(bestScoreMenuEl, '0');
   const button = document.getElementById('resetRecordsBtn');
   button.textContent = '已清除本機最高分';
   window.setTimeout(() => { button.textContent = '清除本機紀錄'; }, 2200);
@@ -1422,5 +1482,5 @@ installTestHook();
 
 export {
   boilingNow, brothId, canvasHeight, canvasWidth, ctx, currentTool, highContrast,
-  isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin, updateToolTip
+  isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin
 };

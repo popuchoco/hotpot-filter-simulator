@@ -1,7 +1,7 @@
 // Canvas rendering functions. Game state is imported explicitly from game.js.
 import {
   boilingNow, brothId, canvasHeight, canvasWidth, ctx, currentTool, highContrast,
-  isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin, updateToolTip
+  isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin
 } from './game.js';
 import { BROTHS, POT_RADIUS_RATIO, POT_SKINS, scaledToolShape } from './config.js';
 import { WAVE_FADE_IN_MS } from './balance.js';
@@ -452,6 +452,5 @@ export function drawTool() {
     ctx.stroke();
     ctx.setLineDash([]);
   }
-  updateToolTip();
   ctx.restore();
 }

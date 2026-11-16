@@ -31,28 +31,39 @@
 
 ## 程式結構
 
-- `src/game.js`：選單、遊戲狀態、輸入、結果與本機資料；以原生 ES module 載入。
-- `src/renderer.js`、`src/physics.js`：Canvas 繪製與不依賴 DOM 的粒子物理。
-- `src/config.js`、`src/rules.js`、`src/rng.js`：共用設定、純規則函式與可重現亂數。
-- `tools/`、`tests/`：本機靜態伺服器、Playwright 瀏覽器檢查、bot 評估與 Vitest 單元測試。
+- `src/config.js`：關卡、工具、湯底、外觀和遊戲規則的固定設定。
+- `src/balance.js`：可調整的遊戲平衡值，例如分波、冷卻和物理參數。
+- `src/rules.js`：純規則函式，包括撈取判定、計分、湯汁損失、清潔度、任務成敗和成就條件。
+- `src/rng.js`：種子雜湊、可重現亂數及每日挑戰資訊解析。
+- `src/waves.js`：分波補料的時間判斷、波次內容和生成位置。
+- `src/physics.js`：不依賴 DOM 的食材粒子移動與物理更新。
+- `src/geometry.js`：鍋子縮放時的粒子座標換算。
+- `src/renderer.js`：Canvas 上的鍋具、湯底、食材和工具繪製。
+- `src/game.js`：選單、遊戲狀態、輸入、DOM 更新、結果與本機資料；使用原生 ES modules 載入。
+- `tests/`：以 Vitest 執行的純函式單元測試。
+- `tools/`：本機靜態伺服器、Playwright 瀏覽器檢查和 bot 評估工具。
 
-常用指令：
+## npm 指令、測試與評估
+
+常用 npm scripts：
 
 ```bash
-npm run serve       # 在 http://127.0.0.1:8765 預覽
-npm run lint        # ESLint
-npm test            # Vitest
-npm run smoke       # 五種視窗尺寸的瀏覽器流程
-npm run test:browser # 鍵盤焦點、背景暫停與縮放檢查
-npm run eval:quick  # 小型 bot 評估
-npm run eval:full   # cfgA–cfgG，每組三局
+npm run serve        # 啟動本機靜態伺服器：http://127.0.0.1:8765
+npm run lint         # ESLint 檢查
+npm test             # Vitest 純函式單元測試
+npm run test:browser # Playwright 鍵盤、暫停、版面和 DOM 更新頻率檢查
+npm run smoke        # 五種視窗尺寸的瀏覽器操作流程
+npm run eval:quick   # 執行小型 bot 評估矩陣
+npm run eval:full    # 執行 cfgA–cfgG，每種設定三局
 ```
 
-Playwright 會使用 `CHROME_PATH` 指定的 Chrome，或 `/usr/bin/google-chrome`；若兩者皆無，請先執行 `npx playwright-core install chromium`。
+`npm test` 在 Node.js 執行不需要瀏覽器的規則、幾何和波次測試。`test:browser` 與 `smoke` 使用 Playwright 和本機 Chrome，檢查實際 DOM、輸入與不同視窗尺寸；DOM 頻率測試會列出工具提示和方法列的 MutationObserver 每秒次數。
+
+`eval:quick` 和 `eval:full` 以 Playwright 假時鐘執行遊戲，再讓 `tools/eval/bot.js` 按不同策略和間隔操作。評估結果會輸出 JSON 原始紀錄及 Markdown 摘要，預設放在 `tools/eval/out/`。Playwright 使用 `CHROME_PATH` 指定的 Chrome，或 `/usr/bin/google-chrome`；如本機尚未安裝 Chromium，可執行 `npx playwright-core install chromium`。
 
 ## GitHub Pages 部署
 
-本遊戲是純前端 HTML、CSS 和 Canvas，無需建置步驟或後端。
+本遊戲是純前端 HTML、CSS、Canvas 與原生 ES modules，無需 bundler、建置步驟或後端。GitHub Pages 直接提供 repository 中的原始檔案。
 
 1. 將專案檔案放在 GitHub repository 的根目錄（或 `/docs`）。
 2. 在 **Settings → Pages** 選擇 `main` 分支和 `/ (root)`（或 `/docs`）。
@@ -66,7 +77,7 @@ Playwright 會使用 `CHROME_PATH` 指定的 Chrome，或 `/usr/bin/google-chrom
 npm run serve
 ```
 
-GitHub Pages 仍直接提供原始 HTML、CSS 與 JavaScript，無需建置或 bundler。
+GitHub Pages 仍直接提供原始 HTML、CSS 與 JavaScript 模組，無需建置或 bundler。
 
 ## 授權
 

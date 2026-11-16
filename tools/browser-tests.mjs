@@ -70,6 +70,53 @@ try {
     }
   }
 
+  {
+    const page = await createGamePage({ width: 1920, height: 1080 });
+    try {
+      assert.equal(await page.evaluate(() => window.__hotpot.state.challengeRule), 'score', 'DOM rate measurement uses score mode');
+      await page.evaluate(() => {
+        const toolTip = document.querySelector('#toolTip');
+        const methodRow = document.querySelector('.method-row');
+        const counts = { toolTip: 0, methodRow: 0 };
+        const options = { childList: true, characterData: true, attributes: true, subtree: true };
+        new MutationObserver(records => { counts.toolTip += records.length; }).observe(toolTip, options);
+        new MutationObserver(records => { counts.methodRow += records.length; }).observe(methodRow, options);
+        window.__domRateMeasurement = { counts, startedAt: performance.now() };
+      });
+
+      await page.waitForTimeout(5_000);
+      await page.evaluate(() => window.__hotpot.selectTool('spoon'));
+      for (let scoop = 0; scoop < 4; scoop++) {
+        await page.evaluate(() => {
+          const particle = window.__hotpot.state.particles[0];
+          window.__hotpot.scoopAt(particle.x, particle.y);
+        });
+      }
+      await page.waitForTimeout(1_500);
+      const rates = await page.evaluate(() => {
+        const seconds = (performance.now() - window.__domRateMeasurement.startedAt) / 1000;
+        const { counts } = window.__domRateMeasurement;
+        return {
+          seconds,
+          toolTipCount: counts.toolTip,
+          methodRowCount: counts.methodRow,
+          toolTipPerSecond: counts.toolTip / seconds,
+          methodRowPerSecond: counts.methodRow / seconds
+        };
+      });
+      assert.ok(rates.toolTipPerSecond <= 2,
+        `#toolTip mutations ${rates.toolTipPerSecond.toFixed(2)}/s exceed 2/s`);
+      assert.ok(rates.methodRowPerSecond <= 4,
+        `.method-row mutations ${rates.methodRowPerSecond.toFixed(2)}/s exceed 4/s`);
+      console.log(
+        `DOM rates ${rates.seconds.toFixed(1)}s: #toolTip ${rates.toolTipCount} (${rates.toolTipPerSecond.toFixed(2)}/s; baseline 60.5/s), `
+        + `.method-row ${rates.methodRowCount} (${rates.methodRowPerSecond.toFixed(2)}/s; baseline 121/s)`
+      );
+    } finally {
+      await page.close();
+    }
+  }
+
   for (const viewport of [
     { width: 1920, height: 1080 },
     { width: 1280, height: 800 },
