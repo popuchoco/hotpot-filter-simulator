@@ -2,6 +2,8 @@ import { BOIL_CYCLE_MS, BOIL_DURATION_MS } from './config.js';
 import { FIRST_BOIL_DELAY_MS } from './balance.js';
 
 export const MAX_STEAM_WISPS = 24;
+const PARTICLE_TYPES = Object.freeze(['meat', 'veg', 'oil', 'bone', 'debris']);
+const NO_BOB_OFFSET = Object.freeze({ x: 0, y: 0 });
 
 export function renderCacheKey(size, skin, broth, highContrast, devicePixelRatio) {
   const dimensions = typeof size === 'number' ? [size, size] : [size.width, size.height];
@@ -47,4 +49,18 @@ export function visualNoise(seed) {
   value = Math.imul(value ^ (value >>> 15), 0x846ca68b);
   value ^= value >>> 16;
   return (value >>> 0) / 0x1_0000_0000;
+}
+
+export function particleBobOffset(particle, now, enabled = true) {
+  const radius = Math.max(0, Number(particle?.r) || 0);
+  if (!enabled || radius === 0) return NO_BOB_OFFSET;
+  const typeIndex = Math.max(0, PARTICLE_TYPES.indexOf(particle.type));
+  const detail = particle.rotation ?? particle.shimmer ?? particle.shade ?? particle.integrity ?? 0;
+  const seed = (Math.round(radius * 1000) ^ Math.imul(typeIndex + 1, 0x9e3779b9) ^ Math.round(detail * 1000)) | 0;
+  const phase = now * .00115 + visualNoise(seed) * Math.PI * 2;
+  const amplitude = radius * .08;
+  return {
+    x: Math.cos(phase) * amplitude * .5,
+    y: Math.sin(phase) * amplitude * .5
+  };
 }

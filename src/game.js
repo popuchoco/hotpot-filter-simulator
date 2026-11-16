@@ -1,6 +1,6 @@
 // Game state, input, UI, persistence, and score flow.
 import * as CONFIG from './config.js';
-import { drawParticles, drawSoup, drawTool } from './renderer.js';
+import { drawParticles, drawSoup, drawTool, drawVisualEffects } from './renderer.js';
 import { updatePhysics } from './physics.js';
 import { rescaleParticles } from './geometry.js';
 import {
@@ -15,6 +15,7 @@ import {
   MAX_DEBRIS_PER_WAVE, PRACTICE_WAVES_ENABLED, WAVE_SPAWN_INWARD_SPEED,
 } from './balance.js';
 import { createWaveRng, createWaveState, isFadingIn, nextWaveDecision, waveComposition, waveSpawnPositions } from './waves.js';
+import { addVisualEffect } from './visual-effects.js';
 
 const {
   ACHIEVEMENTS, ACHIEVEMENTS_KEY, BEST_SCORE_KEY, BIG_PARTICLE_RADIUS,
@@ -107,6 +108,7 @@ let running = false;
 let gameEnded = false;
 let particles = [];
 let particleGroups = createParticleGroups();
+const visualEffects = [];
 let canvasWidth = 0;
 let canvasHeight = 0;
 let pixelRatio = 1;
@@ -617,6 +619,7 @@ function tryScoop() {
   const indices = caught.map(particle => particles.indexOf(particle));
 
   if (!caught.length) {
+    addVisualEffect(visualEffects, { kind: 'drip', x: mouse.x, y: mouse.y, createdAt: now }, { reduceMotion });
     showHint('這裡沒有食材，試試靠近一點。');
     return;
   }
@@ -693,6 +696,21 @@ function tryScoop() {
   score = Math.max(0, score + Math.round(gained * comboBonus) - lost);
   setText(scoreEl, score);
   updateCounts();
+
+  if (primaryFailed || successfulActions === 0) {
+    addVisualEffect(visualEffects, { kind: 'drip', x: mouse.x, y: mouse.y, createdAt: now }, { reduceMotion });
+  }
+  if (successfulActions > 0) {
+    addVisualEffect(visualEffects, { kind: 'splash', x: mouse.x, y: mouse.y, createdAt: now }, { reduceMotion });
+    addVisualEffect(visualEffects, { kind: 'ripple', x: mouse.x, y: mouse.y, createdAt: now }, { reduceMotion });
+    const actionPoints = Math.round(gained * comboBonus) - lost;
+    if (actionPoints > 0) {
+      const comboText = challengeRule === 'score' && combo > 0 ? `連擊 ×${comboBonus.toFixed(2)}` : '';
+      addVisualEffect(visualEffects, {
+        kind: 'score', x: mouse.x, y: mouse.y, amount: actionPoints, comboText, createdAt: now
+      }, { reduceMotion });
+    }
+  }
 
   playSound(primaryFailed ? 'fail' : crackedBone ? 'boneCrack' : 'scoop');
   if (primaryFailed) {
@@ -991,6 +1009,7 @@ function loop(now) {
   potHadNoScoopableUnits = getScoopableIngredientUnits() === 0;
   drawSoup(now, simulationTimeMs);
   drawParticles(now, simulationTimeMs);
+  drawVisualEffects(now);
   drawTool();
   updateMethodDisplay(now);
   animationFrame = requestAnimationFrame(loop);
@@ -1015,6 +1034,7 @@ function startGame(mode = 'challenge', daily = false) {
   waveEnabled = challengeRule === 'score' && (mode === 'challenge' || practiceWavesEnabled);
   endReason = null;
   lastResult = null;
+  visualEffects.length = 0;
   activeStage = mode === 'practice' ? PRACTICE_STAGE : STAGES[currentStageId];
   activeDurationMs = mode === 'practice' ? 0 : challengeRule === 'clear' ? clearRuleDurationMs(currentStageId) : activeStage.durationMs;
   score = 0;
@@ -1490,6 +1510,7 @@ window.addEventListener('resize', () => {
   if (!running) return;
   drawSoup(performance.now(), simulationTimeMs);
   drawParticles(performance.now(), simulationTimeMs);
+  drawVisualEffects(performance.now());
   drawTool();
 });
 
@@ -1504,5 +1525,5 @@ installTestHook();
 
 export {
   boilingNow, brothId, canvasHeight, canvasWidth, ctx, currentTool, highContrast,
-  isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin
+  isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin, visualEffects
 };

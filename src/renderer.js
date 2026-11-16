@@ -1,15 +1,19 @@
 // Canvas rendering functions. Game state is imported explicitly from game.js.
 import {
   brothId, canvasHeight, canvasWidth, ctx, currentTool, highContrast,
-  isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin
+  isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin, visualEffects
 } from './game.js';
 import { BROTHS, POT_RADIUS_RATIO, POT_SKINS, scaledToolShape, TOOL_SHAPES } from './config.js';
 import { WAVE_FADE_IN_MS } from './balance.js';
 import { drawFoodSprite } from './food-sprites.js';
 import {
-  bubbleCountForHeat, debugHitEnabled, heatLevelAt, renderCacheKey, steamWispCount, visualNoise
+  bubbleCountForHeat, debugHitEnabled, heatLevelAt, particleBobOffset,
+  renderCacheKey, steamWispCount, visualNoise
 } from './rendering.js';
+import { pruneVisualEffects, visualEffectProgress } from './visual-effects.js';
 const DEBUG_HIT_OVERLAY = debugHitEnabled(window.location.search);
+const SPLASH_DIRECTIONS = Object.freeze([-2.7, -2.12, -1.58, -.98, -.42]);
+const DRIP_OFFSETS = Object.freeze([-6, 0, 6]);
 const POT_GEOMETRY = Object.freeze({
   outerRadiusX: POT_RADIUS_RATIO,
   outerRadiusY: .93,
@@ -373,15 +377,32 @@ export function drawParticles(now = performance.now(), simulationNowMs = now) {
   // Oil sits on the surface, meat and vegetables catch the light above it.
   const drawWithFade = particle => {
     const chilled = particle.type === 'oil' && isOilChilled(now);
-    const draw = () => drawFoodSprite(ctx, particle, highContrast, dpr, chilled);
+    const draw = progress => {
+      const bob = particleBobOffset(particle, now, !reduceMotion);
+      let offsetX = bob.x;
+      let offsetY = bob.y;
+      if (Number.isFinite(particle.spawnedAtMs) && !reduceMotion && progress < 1) {
+        const dx = particle.x - canvasWidth / 2;
+        const dy = particle.y - canvasHeight / 2;
+        const distance = Math.hypot(dx, dy) || 1;
+        const slide = Math.min(canvasWidth, canvasHeight) * POT_RADIUS_RATIO * .12 * (1 - progress);
+        offsetX += dx / distance * slide;
+        offsetY += dy / distance * slide;
+      }
+      ctx.save();
+      ctx.translate(offsetX, offsetY);
+      drawFoodSprite(ctx, particle, highContrast, dpr, chilled);
+      ctx.restore();
+    };
     if (!Number.isFinite(particle.spawnedAtMs)) {
-      draw();
+      draw(1);
       return;
     }
-    const alpha = Math.max(0, Math.min(1, (simulationNowMs - particle.spawnedAtMs) / WAVE_FADE_IN_MS));
+    // Under reduce-motion the fade (opacity cue for the 0.6 s no-scoop protection) stays; only the slide-in is dropped.
+    const progress = Math.max(0, Math.min(1, (simulationNowMs - particle.spawnedAtMs) / WAVE_FADE_IN_MS));
     ctx.save();
-    ctx.globalAlpha *= alpha;
-    draw();
+    ctx.globalAlpha *= progress;
+    draw(progress);
     ctx.restore();
   };
   particleGroups.oil.forEach(drawWithFade);
@@ -390,6 +411,88 @@ export function drawParticles(now = performance.now(), simulationNowMs = now) {
   particleGroups.bone.forEach(drawWithFade);
   particleGroups.debris.forEach(drawWithFade);
   if (DEBUG_HIT_OVERLAY) drawParticleHitOverlay();
+}
+
+function drawRipple(effect, progress) {
+  const radius = 8 + progress * 34;
+  ctx.save();
+  ctx.globalAlpha *= 1 - progress;
+  ctx.strokeStyle = highContrast ? '#fff36b' : 'rgba(255,249,226,.9)';
+  ctx.lineWidth = highContrast ? 2.5 : Math.max(1, 3 * (1 - progress));
+  ctx.beginPath();
+  ctx.ellipse(effect.x, effect.y, radius * 1.28, radius * .68, -.12, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSplash(effect, progress) {
+  const spread = 5 + progress * 24;
+  const radius = Math.max(1, 3.2 * (1 - progress));
+  ctx.save();
+  ctx.globalAlpha *= 1 - progress;
+  for (let index = 0; index < SPLASH_DIRECTIONS.length; index++) {
+    const angle = SPLASH_DIRECTIONS[index];
+    const x = effect.x + Math.cos(angle) * spread;
+    const y = effect.y + Math.sin(angle) * spread + progress * progress * 9;
+    ctx.fillStyle = highContrast ? '#fff36b' : (index % 2 ? '#fff8e2' : '#a8e5e8');
+    ctx.beginPath();
+    ctx.ellipse(x, y, radius * .72, radius * 1.2, angle, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawDrip(effect, progress) {
+  ctx.save();
+  ctx.globalAlpha *= 1 - progress;
+  for (let index = 0; index < DRIP_OFFSETS.length; index++) {
+    const offset = DRIP_OFFSETS[index];
+    const x = effect.x + offset + Math.sin(progress * 3 + index) * 2;
+    const y = effect.y + 5 + progress * 29 + index * 2;
+    ctx.fillStyle = highContrast ? '#fff36b' : 'rgba(255,232,190,.88)';
+    ctx.strokeStyle = highContrast ? '#000' : 'rgba(91,48,29,.8)';
+    ctx.lineWidth = highContrast ? 1.25 : .8;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 1.7, 3.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawFloatingScore(effect, progress) {
+  const moving = !reduceMotion && !effect.static;
+  const y = effect.y - 12 - (moving ? progress * 40 : 0);
+  const alpha = moving ? 1 - progress : 1;
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '700 17px sans-serif';
+  ctx.lineWidth = highContrast ? 4.5 : 3.5;
+  ctx.strokeStyle = highContrast ? '#000' : 'rgba(48,28,18,.92)';
+  ctx.fillStyle = highContrast ? '#fff36b' : '#fff8e7';
+  const amount = `+${effect.amount}`;
+  ctx.strokeText(amount, effect.x, y);
+  ctx.fillText(amount, effect.x, y);
+  if (effect.comboText) {
+    ctx.font = '700 11px sans-serif';
+    ctx.strokeText(effect.comboText, effect.x, y + 17);
+    ctx.fillText(effect.comboText, effect.x, y + 17);
+  }
+  ctx.restore();
+}
+
+export function drawVisualEffects(now = performance.now()) {
+  pruneVisualEffects(visualEffects, now);
+  for (const effect of visualEffects) {
+    if (reduceMotion && effect.kind !== 'score') continue;
+    const progress = visualEffectProgress(effect, now);
+    if (effect.kind === 'ripple') drawRipple(effect, progress);
+    else if (effect.kind === 'splash') drawSplash(effect, progress);
+    else if (effect.kind === 'drip') drawDrip(effect, progress);
+    else if (effect.kind === 'score') drawFloatingScore(effect, progress);
+  }
 }
 
 function drawParticleHitOverlay() {
