@@ -989,7 +989,7 @@ function loop(now) {
   });
   scheduleWave(boilEvent);
   potHadNoScoopableUnits = getScoopableIngredientUnits() === 0;
-  drawSoup(now);
+  drawSoup(now, simulationTimeMs);
   drawParticles(now, simulationTimeMs);
   drawTool();
   updateMethodDisplay(now);
@@ -1418,7 +1418,7 @@ skinSelect.addEventListener('change', () => {
   selectedSkin = skinSelect.value in POT_SKINS ? skinSelect.value : 'steel';
   saveSettings();
   if (running) {
-    drawSoup(performance.now());
+    drawSoup(performance.now(), simulationTimeMs);
     drawParticles(performance.now(), simulationTimeMs);
     drawTool();
   }
@@ -1488,7 +1488,7 @@ document.getElementById('menuBtn').addEventListener('click', () => {
 window.addEventListener('resize', () => {
   resize();
   if (!running) return;
-  drawSoup(performance.now());
+  drawSoup(performance.now(), simulationTimeMs);
   drawParticles(performance.now(), simulationTimeMs);
   drawTool();
 });
