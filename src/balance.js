@@ -11,6 +11,7 @@ export const WAVE_FADE_IN_MS = 600;
 export const WAVE_SPAWN_RING_MIN_RATIO = 0.1;
 export const WAVE_SPAWN_RING_MAX_RATIO = 0.2;
 export const WAVE_SPAWN_AVOID_DISTANCE_FACTOR = 1.5;
+export const WAVE_SPAWN_INWARD_SPEED = 2.2;
 
 export const COMBO_WINDOW_MS = 1_500;
 export const COMBO_STEP = 0.05;

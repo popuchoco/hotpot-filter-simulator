@@ -105,7 +105,11 @@ async function runOne(task, index) {
           soupMl: Math.round(state.soupLossMl),
           bot: { ...window.__botStats },
           missionResult: state.missionResult,
-          endReason: state.endReason
+          endReason: state.endReason,
+          ...['waves', 'maxCombo', 'waveClears', 'potEmptyMs', 'unitsInPot'].reduce((extra, key) => {
+            if (state[key] !== undefined) extra[key] = state[key];
+            return extra;
+          }, {})
         };
       });
     })();

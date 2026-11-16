@@ -67,7 +67,7 @@ function makeDecision(state, { spawn = false, reason = null, deferred = false } 
 // boilEvent is an event pulse (false between events); a held true value is only
 // applied once until the next false value is observed.
 export function nextWaveDecision(waveState, {
-  nowMs, unitsInPot, initialUnits, boilEvent = false
+  nowMs, unitsInPot, initialUnits, boilEvent = false, debrisUnits = 0
 }) {
   const now = Number(nowMs);
   if (!Number.isFinite(now)) throw new TypeError('nowMs must be a finite number');
@@ -97,7 +97,8 @@ export function nextWaveDecision(waveState, {
   if (!reason) return makeDecision(state);
 
   const waveUnits = sumCounts(waveComposition(state.stageCounts, state.waveIndex));
-  if (units + waveUnits > initial * POT_CAP_RATIO) {
+  const waveDebrisUnits = reason === 'boil' ? Math.max(0, Math.floor(Number(debrisUnits) || 0)) : 0;
+  if (units + waveUnits + waveDebrisUnits > initial * POT_CAP_RATIO) {
     state.pendingReason = reason;
     return makeDecision(state, { reason, deferred: true });
   }
@@ -128,35 +129,24 @@ export function waveSpawnPositions(rng, count, { cx, cy, potRadius, avoid } = {}
   const radius = Math.max(0, Number(potRadius) || 0);
   const positions = [];
   for (let index = 0; index < total; index++) {
-    let candidate;
-    let farthest;
-    let farthestDistance = -Infinity;
-    for (let attempt = 0; attempt < 256; attempt++) {
-      const angle = rng() * Math.PI * 2;
-      const ringRadius = radius * (1 + WAVE_SPAWN_RING_MIN_RATIO
-        + rng() * (WAVE_SPAWN_RING_MAX_RATIO - WAVE_SPAWN_RING_MIN_RATIO));
-      const x = cx + Math.cos(angle) * ringRadius;
-      const y = cy + Math.sin(angle) * ringRadius;
-      candidate = { x, y, angle };
-      if (avoid && Number.isFinite(avoid.r)) {
-        const distance = Math.hypot(x - avoid.x, y - avoid.y);
-        if (distance > farthestDistance) {
-          farthestDistance = distance;
-          farthest = candidate;
-        }
-        if (distance <= avoid.r * WAVE_SPAWN_AVOID_DISTANCE_FACTOR) continue;
-      }
-      break;
-    }
+    let angle = rng() * Math.PI * 2;
+    const ringRadius = radius * (1 + WAVE_SPAWN_RING_MIN_RATIO
+      + rng() * (WAVE_SPAWN_RING_MAX_RATIO - WAVE_SPAWN_RING_MIN_RATIO));
+    let x = cx + Math.cos(angle) * ringRadius;
+    let y = cy + Math.sin(angle) * ringRadius;
     if (avoid && Number.isFinite(avoid.r)
-      && Math.hypot(candidate.x - avoid.x, candidate.y - avoid.y) <= avoid.r * WAVE_SPAWN_AVOID_DISTANCE_FACTOR
-      && farthest) candidate = farthest;
+      && Math.hypot(x - avoid.x, y - avoid.y) <= avoid.r * WAVE_SPAWN_AVOID_DISTANCE_FACTOR) {
+      const avoidAngle = Math.atan2(avoid.y - cy, avoid.x - cx);
+      angle = avoidAngle + Math.PI;
+      x = cx + Math.cos(angle) * ringRadius;
+      y = cy + Math.sin(angle) * ringRadius;
+    }
 
     positions.push({
-      x: candidate.x,
-      y: candidate.y,
-      vx: -Math.cos(candidate.angle),
-      vy: -Math.sin(candidate.angle)
+      x,
+      y,
+      vx: -Math.cos(angle),
+      vy: -Math.sin(angle)
     });
   }
   return positions;

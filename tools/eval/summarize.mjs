@@ -22,8 +22,8 @@ export function summarize(rows) {
     groups.get(key).push(row);
   }
   const lines = [
-    '| stage | rule | broth | strategy | interval | viewport | n | score min–median–max | cleanliness | median fails | emptyAt s | simS | soup median mL | mission success | comment | errors |',
-    '|---|---|---|---:|---:|:---:|---:|---:|---|---:|---|---|---:|---:|---|---:|'
+    '| stage | rule | broth | strategy | interval | viewport | n | score min–median–max | cleanliness | median fails | emptyAt s | waves median | potEmpty s (per game) | maxCombo median | simS | soup median mL | mission success | comment | errors |',
+    '|---|---|---|---:|---:|:---:|---:|---:|---|---:|---|---:|---|---:|---|---:|---:|---|---:|'
   ];
   for (const [key, group] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     const [stage, rule, broth, strategy, interval, viewport] = key.split('|');
@@ -32,11 +32,16 @@ export function summarize(rows) {
     const comment = (group.find(row => row.comment)?.comment || group.find(row => row.error)?.error?.message || '—').replaceAll('|', '\\|').replaceAll('\n', ' ').slice(0, 48);
     const clean = list(group.map(row => row.cleanliness ?? 'ERR'));
     const emptyAt = list(group.map(row => row.bot?.emptyAtS ?? null));
+    const waves = median(group.map(row => row.waves));
+    const potEmptySeconds = list(group.map(row => Number.isFinite(row.potEmptyMs)
+      ? Math.round(row.potEmptyMs / 100) / 10
+      : null));
+    const bestCombo = median(group.map(row => row.maxCombo));
     const simSeconds = list(group.map(row => row.simS ?? null));
     const failures = median(group.map(row => row.fails));
     const soup = median(group.map(row => row.soupMl));
     const errors = group.filter(row => row.error).length;
-    lines.push(`| ${stage} | ${rule} | ${broth} | ${strategy} | ${interval} | ${viewport} | ${group.length} | ${scoreRange(group)} | ${clean} | ${failures ?? '—'} | ${emptyAt} | ${simSeconds} | ${soup ?? '—'} | ${missionCell} | ${comment} | ${errors} |`);
+    lines.push(`| ${stage} | ${rule} | ${broth} | ${strategy} | ${interval} | ${viewport} | ${group.length} | ${scoreRange(group)} | ${clean} | ${failures ?? '—'} | ${emptyAt} | ${waves ?? '—'} | ${potEmptySeconds} | ${bestCombo ?? '—'} | ${simSeconds} | ${soup ?? '—'} | ${missionCell} | ${comment} | ${errors} |`);
   }
   return lines.join('\n');
 }

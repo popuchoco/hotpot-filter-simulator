@@ -3,7 +3,7 @@ import {
   CLEAR_RULE_DURATION_MS, COMBO_MAX, COMBO_STEP, COMBO_WINDOW_MS,
   DAILY_WAVE_STREAM_XOR, POT_CAP_RATIO, WAVE_CLEAR_BONUS_PER_S,
   WAVE_FADE_IN_MS, WAVE_INTERVAL_MS, WAVE_LOW_RATIO, WAVE_MIN_GAP_MS,
-  WAVE_SIZE_RATIO
+  WAVE_SIZE_RATIO, WAVE_SPAWN_INWARD_SPEED
 } from '../src/balance.js';
 import { STAGES } from '../src/config.js';
 import { mulberry32 } from '../src/rng.js';
@@ -23,6 +23,7 @@ describe('S3 wave balance and composition', () => {
     expect(WAVE_MIN_GAP_MS).toBe(2_500);
     expect(POT_CAP_RATIO).toBe(1.3);
     expect(WAVE_FADE_IN_MS).toBe(600);
+    expect(WAVE_SPAWN_INWARD_SPEED).toBe(2.2);
     expect(COMBO_WINDOW_MS).toBe(1_500);
     expect(COMBO_STEP).toBe(.05);
     expect(COMBO_MAX).toBe(10);
@@ -89,6 +90,14 @@ describe('S3 wave scheduler', () => {
     expect(due).toMatchObject({ spawn: true, reason: 'boil', deferred: false });
   });
 
+  it('counts the debris merged into a boil wave against the pot cap', () => {
+    const state = createWaveState({ stage: 'home', startMs: 0 });
+    const deferred = nextWaveDecision(state, {
+      nowMs: 6_500, unitsInPot: 99, initialUnits: 100, boilEvent: true, debrisUnits: 2
+    });
+    expect(deferred).toMatchObject({ spawn: false, reason: 'boil', deferred: true });
+  });
+
   it('immediately schedules the next wave when the current pot is cleared', () => {
     const state = createWaveState({ stage: 'starter', startMs: 0 });
     expect(nextWaveDecision(state, { nowMs: 1, unitsInPot: 0, initialUnits: 48 }))
@@ -106,15 +115,16 @@ describe('S3 fading, spawn placement, and deterministic stream', () => {
   });
 
   it('places particles outside the rim, moving inward, clear of the scoop area', () => {
+    const avoid = { x: 210, y: 200, r: 20 };
     const positions = waveSpawnPositions(mulberry32(22), 20, {
-      cx: 100, cy: 200, potRadius: 100, avoid: { x: 100, y: 200, r: 20 }
+      cx: 100, cy: 200, potRadius: 100, avoid
     });
     expect(positions).toHaveLength(20);
     for (const position of positions) {
       const radius = Math.hypot(position.x - 100, position.y - 200);
       expect(radius).toBeGreaterThanOrEqual(110);
       expect(radius).toBeLessThanOrEqual(120);
-      expect(Math.hypot(position.x - 100, position.y - 200)).toBeGreaterThan(30);
+      expect(Math.hypot(position.x - avoid.x, position.y - avoid.y)).toBeGreaterThan(30);
       expect(position.vx * (position.x - 100) + position.vy * (position.y - 200)).toBeLessThan(0);
     }
   });
@@ -126,6 +136,14 @@ describe('S3 fading, spawn placement, and deterministic stream', () => {
     for (let i = 0; i < 10_000; i++) physicsRng();
     const actual = waveSpawnPositions(createWaveRng(seed), 8, { cx: 0, cy: 0, potRadius: 100 });
     expect(actual).toEqual(expected);
+  });
+
+  it('keeps the daily random stream aligned when tool avoidance changes placement', () => {
+    const left = createWaveRng(0xA11CE);
+    const right = createWaveRng(0xA11CE);
+    waveSpawnPositions(left, 12, { cx: 0, cy: 0, potRadius: 100, avoid: { x: 0, y: 100, r: 25 } });
+    waveSpawnPositions(right, 12, { cx: 0, cy: 0, potRadius: 100, avoid: { x: 0, y: 0, r: 25 } });
+    expect(left()).toBe(right());
   });
 });
 

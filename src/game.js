@@ -4,10 +4,15 @@ import { drawParticles, drawSoup, drawTool } from './renderer.js';
 import { updatePhysics } from './physics.js';
 import {
   achievementConditions, allFoodCorrectlyRemoved, applySoupLoss, categoryCleanliness, getHitParticles,
-  getScoopTargets, isEligibleDailyChallenge, isGoodToolFor, loseLife, missionSuccess, noLivesRemaining, overallCleanliness,
-  resultComment as gradeResultComment, scoopDecision, scoreParticle, soupLossForParticle, wrongToolPenalty
+  clearRuleDurationMs, comboMultiplier, getScoopTargets, isEligibleDailyChallenge, isGoodToolFor,
+  loseLife, missionSuccess, nextCombo, noLivesRemaining, overallCleanliness,
+  resultComment as gradeResultComment, scoopDecision, scoreParticle, soupLossForParticle, waveClearBonus, wrongToolPenalty
 } from './rules.js';
 import { dailyChallengeDescriptor as parseDailyChallengeDescriptor, dailyDateTaipei, formatSeed, hashSeed, mulberry32 } from './rng.js';
+import {
+  MAX_DEBRIS_PER_WAVE, PRACTICE_WAVES_ENABLED, WAVE_SPAWN_INWARD_SPEED,
+} from './balance.js';
+import { createWaveRng, createWaveState, isFadingIn, nextWaveDecision, waveComposition, waveSpawnPositions } from './waves.js';
 
 const {
   ACHIEVEMENTS, ACHIEVEMENTS_KEY, BEST_SCORE_KEY, BIG_PARTICLE_RADIUS, BOIL_CYCLE_MS, BOIL_DURATION_MS,
@@ -49,6 +54,7 @@ const skinSelect = document.getElementById('skinSelect');
 const achievementList = document.getElementById('achievementList');
 const contrastToggle = document.getElementById('contrastToggle');
 const motionToggle = document.getElementById('motionToggle');
+const practiceWavesToggle = document.getElementById('practiceWavesToggle');
 
 let currentTool = 'strainer';
 let score = 0;
@@ -90,12 +96,23 @@ let scooped = { meat: 0, veg: 0, oil: 0, bone: 0, debris: 0, boneHits: 0, fail: 
 let initialMass = { meat: 0, veg: 0, oil: 0, bone: 0, debris: 0 };
 let removedMass = { meat: 0, veg: 0, oil: 0, bone: 0, debris: 0 };
 let simulationTimeMs = 0;
+let waveEnabled = false;
+let waveState = null;
+let waveRandom = null;
+let wavesSpawned = 0;
+let waveInitialUnits = 0;
+let maxCombo = 0;
+let combo = 0;
+let lastComboSuccessMs = null;
+let waveClears = 0;
+let potEmptyMs = 0;
+let potHadNoScoopableUnits = false;
 let correctActionStreak = 0;
-let brothDebrisSpawned = 0;
 let boilingNow = false;
 let reduceMotion = false;
 let highContrast = false;
 let soundEnabled = false;
+let practiceWavesEnabled = PRACTICE_WAVES_ENABLED;
 let audioContext = null;
 let lastCountdownSecond = null;
 let spoonStreak = 0;
@@ -186,9 +203,13 @@ function initializeSettings() {
     ? Boolean(settings.reduceMotion)
     : window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   soundEnabled = Boolean(settings.soundEnabled);
+  practiceWavesEnabled = Object.prototype.hasOwnProperty.call(settings, 'practiceWavesEnabled')
+    ? Boolean(settings.practiceWavesEnabled)
+    : PRACTICE_WAVES_ENABLED;
   selectedSkin = settings.skin && POT_SKINS[settings.skin] ? settings.skin : 'steel';
   contrastToggle.checked = highContrast;
   motionToggle.checked = reduceMotion;
+  practiceWavesToggle.checked = practiceWavesEnabled;
   document.getElementById('soundToggle').checked = soundEnabled;
   document.documentElement.classList.toggle('high-contrast', highContrast);
   document.documentElement.classList.toggle('reduce-motion', reduceMotion);
@@ -196,7 +217,7 @@ function initializeSettings() {
 }
 
 function saveSettings() {
-  saveJSON(SETTINGS_KEY, { highContrast, reduceMotion, soundEnabled, skin: selectedSkin });
+  saveJSON(SETTINGS_KEY, { highContrast, reduceMotion, soundEnabled, practiceWavesEnabled, skin: selectedSkin });
 }
 
 function updateSkinOptions() {
@@ -381,34 +402,134 @@ function spawn() {
     initialMass.bone += 2;
   }
 
-  // Broth-specific debris starts sparse and may drift in during later boil events.
-  brothDebrisSpawned = 0;
-  spawnBrothDebris(currentStageId === 'feast' ? 7 : 4);
+  // Wave zero preserves the existing opening debris; later pieces join boil-pulled waves.
+  spawnBrothDebris(currentStageId === 'feast' ? 7 : 4, { maxCount: currentStageId === 'feast' ? 7 : 4 });
   refreshParticleGroups();
 }
 
-function spawnBrothDebris(requestedCount = 1) {
+function spawnBrothDebris(requestedCount = 1, {
+  randomValue = random, nextPosition = null, spawnedAtMs = null, waveIndex = null,
+  maxCount = MAX_DEBRIS_PER_WAVE
+} = {}) {
   const debrisKind = brothId === 'mala' ? 'chili' : brothId === 'miso' ? 'miso' : null;
   if (!debrisKind) return 0;
-  const count = Math.min(requestedCount, 10 - brothDebrisSpawned);
+  const count = Math.min(requestedCount, maxCount);
   for (let i = 0; i < count; i++) {
-    const pos = randomPosition(12);
+    const pos = nextPosition ? nextPosition() : randomPosition(12);
     particles.push({
       ...pos,
-      r: debrisKind === 'chili' ? 7 + random() * 4 : 6 + random() * 3,
+      r: debrisKind === 'chili' ? 7 + randomValue() * 4 : 6 + randomValue() * 3,
       type: 'debris',
       debrisKind,
       name: debrisKind === 'chili' ? '辣椒片' : '味噌豆渣',
       units: 1,
       mass: 1,
-      vx: (random() - .5) * .22,
-      vy: (random() - .5) * .22,
-      rotation: random() * Math.PI
+      vx: spawnedAtMs === null ? (randomValue() - .5) * .22 : pos.vx * WAVE_SPAWN_INWARD_SPEED,
+      vy: spawnedAtMs === null ? (randomValue() - .5) * .22 : pos.vy * WAVE_SPAWN_INWARD_SPEED,
+      rotation: randomValue() * Math.PI,
+      ...(spawnedAtMs === null ? {} : { spawnedAtMs, waveIndex, waveIncoming: true })
     });
     initialMass.debris += 1;
-    brothDebrisSpawned++;
   }
   return count;
+}
+
+function spawnRefillWave(waveIndex, reason) {
+  const composition = waveComposition(activeStage.counts, waveIndex);
+  const debrisCount = reason === 'boil' && ['mala', 'miso'].includes(brothId)
+    ? MAX_DEBRIS_PER_WAVE
+    : 0;
+  const totalCount = Object.values(composition).reduce((sum, count) => sum + count, 0) + debrisCount;
+  const rng = waveRandom || random;
+  const shape = CONFIG.scaledToolShape(currentTool, currentPotRadius());
+  const avoidRadius = shape?.type === 'circle' ? shape.radius : Math.max(shape?.radiusX || 0, shape?.radiusY || 0);
+  const positions = waveSpawnPositions(rng, totalCount, {
+    cx: canvasWidth / 2,
+    cy: canvasHeight / 2,
+    potRadius: currentPotRadius(),
+    avoid: { x: mouse.x, y: mouse.y, r: avoidRadius }
+  });
+  let positionIndex = 0;
+  const nextPosition = () => positions[positionIndex++];
+  const spawnRandom = () => rng();
+  const waveParticle = pos => ({
+    ...pos,
+    spawnedAtMs: simulationTimeMs,
+    waveIndex,
+    waveIncoming: true
+  });
+  const inwardSpeed = pos => ({
+    vx: pos.vx * WAVE_SPAWN_INWARD_SPEED,
+    vy: pos.vy * WAVE_SPAWN_INWARD_SPEED
+  });
+
+  for (let i = 0; i < composition.meat; i++) {
+    const pos = nextPosition();
+    particles.push({
+      ...waveParticle(pos), ...inwardSpeed(pos),
+      r: 3.2 + spawnRandom() * 3.2, type: 'meat', units: 1, mass: 1,
+      shade: spawnRandom()
+    });
+    initialMass.meat += 1;
+  }
+
+  const allVegTypes = [
+    { name: '芋頭', color: '#b69b70', r: 18 },
+    { name: '南瓜', color: '#e99542', r: 20 },
+    { name: '番茄', color: '#ca5541', r: 18 },
+    { name: '馬鈴薯', color: '#d0a26c', r: 18 }
+  ];
+  const vegTypes = allVegTypes.filter(veg => activeStage.vegetables.includes(veg.name));
+  for (let i = 0; i < composition.veg; i++) {
+    const pos = nextPosition();
+    const veg = vegTypes[Math.floor(spawnRandom() * vegTypes.length)];
+    particles.push({
+      ...waveParticle(pos), ...inwardSpeed(pos),
+      r: veg.r + spawnRandom() * 4, type: 'veg', units: 1, mass: 1,
+      name: veg.name, color: veg.color, rotation: spawnRandom() * Math.PI
+    });
+    initialMass.veg += 1;
+  }
+
+  for (let i = 0; i < composition.oil; i++) {
+    const pos = nextPosition();
+    const radius = 5 + spawnRandom() * 5.5;
+    particles.push({
+      ...waveParticle(pos), ...inwardSpeed(pos),
+      r: radius, type: 'oil', units: 1, mass: radius * radius,
+      shimmer: spawnRandom() * Math.PI * 2
+    });
+    initialMass.oil += radius * radius;
+  }
+  for (let i = 0; i < composition.bone; i++) {
+    const pos = nextPosition();
+    particles.push({
+      ...waveParticle(pos), ...inwardSpeed(pos),
+      r: 19 + spawnRandom() * 4, type: 'bone', name: '骨頭', units: 1, mass: 2,
+      integrity: 2, rotation: spawnRandom() * .3
+    });
+    initialMass.bone += 2;
+  }
+  if (debrisCount) {
+    spawnBrothDebris(debrisCount, { randomValue: spawnRandom, nextPosition, spawnedAtMs: simulationTimeMs, waveIndex });
+  }
+  wavesSpawned++;
+  refreshParticleGroups();
+}
+
+function scheduleWave(boilEvent = false) {
+  if (!waveEnabled || !waveState) return false;
+  const decision = nextWaveDecision(waveState, {
+    nowMs: simulationTimeMs,
+    unitsInPot: getRemainingIngredientUnits(),
+    initialUnits: waveInitialUnits,
+    boilEvent,
+    debrisUnits: ['mala', 'miso'].includes(brothId) ? MAX_DEBRIS_PER_WAVE : 0
+  });
+  waveState = decision.state;
+  if (!decision.spawn) return false;
+  spawnRefillWave(waveState.waveIndex - 1, decision.reason);
+  return true;
 }
 
 function updateCounts() {
@@ -424,8 +545,9 @@ function tryScoop() {
   const tool = TOOL_CONFIG[currentTool];
   const now = performance.now();
   const chilled = isOilChilled(now);
+  const scoopableParticles = getScoopableParticles();
   const { hits: caught, primary, suitable, failure: primaryFailed } = getScoopTargets(
-    particles, mouse.x, mouse.y, currentTool, currentPotRadius(), chilled
+    scoopableParticles, mouse.x, mouse.y, currentTool, currentPotRadius(), chilled
   );
   const indices = caught.map(particle => particles.indexOf(particle));
 
@@ -481,7 +603,19 @@ function tryScoop() {
 
   [...remove].sort((a, b) => b - a).forEach(index => particles.splice(index, 1));
   if (remove.size) refreshParticleGroups();
-  score = Math.max(0, score + gained - lost);
+  let comboBonus = 1;
+  if (challengeRule === 'score') {
+    if (primaryFailed) {
+      combo = nextCombo(combo, lastComboSuccessMs, simulationTimeMs, false);
+      lastComboSuccessMs = null;
+    } else if (successfulActions > 0) {
+      combo = nextCombo(combo, lastComboSuccessMs, simulationTimeMs, true);
+      lastComboSuccessMs = simulationTimeMs;
+      maxCombo = Math.max(maxCombo, combo);
+      comboBonus = comboMultiplier(combo);
+    }
+  }
+  score = Math.max(0, score + Math.round(gained * comboBonus) - lost);
   scoreEl.textContent = score;
   updateCounts();
 
@@ -491,7 +625,9 @@ function tryScoop() {
   } else if (gained > lost) {
     const bigBonus = caught.some(p => p.r > BIG_PARTICLE_RADIUS && isGoodToolFor(p, currentTool, isOilChilled(now)));
     const coldBonus = caught.some(p => p.type === 'oil' && isOilChilled(now) && isGoodToolFor(p, currentTool, isOilChilled(now)));
-    showHint(coldBonus ? `凝固油花撈起！細網很合適 +${gained - lost}` : bigBonus ? `大塊撈起！${tool.name} +${gained - lost}` : `撈取成功 +${gained - lost}`);
+    const actionPoints = Math.round(gained * comboBonus) - lost;
+    const comboText = challengeRule === 'score' && combo > 0 ? `｜連擊 ${combo} ×${comboBonus.toFixed(2)}` : '';
+    showHint(coldBonus ? `凝固油花撈起！細網很合適 +${actionPoints}${comboText}` : bigBonus ? `大塊撈起！${tool.name} +${actionPoints}${comboText}` : `撈取成功 +${actionPoints}${comboText}`);
   } else {
     showHint(`工具不合適，漏掉了… -${lost - gained}`);
   }
@@ -505,6 +641,15 @@ function tryScoop() {
   }
   updateToolTip();
   if (scooped.fail === failuresBeforeScoop && successfulActions > 0) successfulScoops++;
+  if (waveEnabled && particles.length === 0) {
+    const bonus = waveClearBonus(waveState.nextWaveAtMs - simulationTimeMs);
+    waveClears++;
+    score += bonus;
+    scoreEl.textContent = score;
+    if (bonus > 0) showHint(`清波獎勵 +${bonus} 分！`);
+    scheduleWave();
+  }
+  potHadNoScoopableUnits = getScoopableIngredientUnits() === 0;
   if (challengeRule === 'perfect' && noLivesRemaining(lives)) {
     endGame('lives');
     return;
@@ -513,7 +658,7 @@ function tryScoop() {
     endGame('cleared');
     return;
   }
-  if (successfulActions === 0 && lost === 0) showHint('這次沒有撈中，靠近食材再試試。');
+  if (successfulActions === 0 && lost === 0 && !caught.length) showHint('這次沒有撈中，靠近食材再試試。');
 }
 
 function updateToolTip() {
@@ -666,6 +811,14 @@ function getRemainingIngredientUnits() {
   return particles.reduce((total, particle) => total + (particle.units || 1), 0);
 }
 
+function getScoopableParticles() {
+  return particles.filter(particle => !isFadingIn(particle, simulationTimeMs));
+}
+
+function getScoopableIngredientUnits() {
+  return getScoopableParticles().reduce((total, particle) => total + (particle.units || 1), 0);
+}
+
 function currentBoilState() {
   const broth = BROTHS[brothId];
   const cycle = BOIL_CYCLE_MS / broth.boilFactor;
@@ -720,23 +873,30 @@ function loop(now) {
   const elapsedMs = lastFrameTime === null ? 0 : Math.max(0, now - lastFrameTime);
   const frameScale = lastFrameTime === null ? 1 : Math.min(FRAME_SCALE_MAX, elapsedMs / (1000 / 60));
   lastFrameTime = now;
-  // Event cadence follows active wall-clock time; physics still caps large frame steps.
+  // Scheduler and boil cadence use this active simulation clock; physics caps large frame steps.
   simulationTimeMs += elapsedMs;
+  if (potHadNoScoopableUnits) potEmptyMs += elapsedMs;
   const wasBoiling = boilingNow;
+  let boilEvent = false;
   boilingNow = currentBoilState();
   if (boilingNow !== wasBoiling) {
     updateEventDisplay();
     if (boilingNow) {
+      boilEvent = true;
       playSound('boil');
-      spawnBrothDebris(1);
     }
+  }
+  for (const particle of particles) {
+    if (particle.waveIncoming && !isFadingIn(particle, simulationTimeMs)) particle.waveIncoming = false;
   }
   updatePhysics(frameScale, {
     particles, particleGroups, canvasWidth, canvasHeight, brothId, BROTHS,
     boilingNow, reduceMotion, random, refreshParticleGroups
   });
+  scheduleWave(boilEvent);
+  potHadNoScoopableUnits = getScoopableIngredientUnits() === 0;
   drawSoup(now);
-  drawParticles(now);
+  drawParticles(now, simulationTimeMs);
   drawTool();
   updateMethodDisplay(now);
   animationFrame = requestAnimationFrame(loop);
@@ -756,10 +916,12 @@ function startGame(mode = 'challenge', daily = false) {
   challengeRule = isDailyChallenge ? 'score' : (mode === 'practice' ? 'score' : (ruleSelect.value in RULES ? ruleSelect.value : 'score'));
   brothId = isDailyChallenge ? ['clear', 'mala', 'miso'][dailyChallengeSeed % 3] : (brothSelect.value in BROTHS ? brothSelect.value : 'clear');
   seededRandom = isDailyChallenge ? mulberry32(dailyChallengeSeed || 0) : null;
+  waveRandom = isDailyChallenge ? createWaveRng(dailyChallengeSeed || 0) : null;
+  waveEnabled = challengeRule === 'score' && (mode === 'challenge' || practiceWavesEnabled);
   endReason = null;
   lastResult = null;
   activeStage = mode === 'practice' ? PRACTICE_STAGE : STAGES[currentStageId];
-  activeDurationMs = mode === 'practice' ? 0 : activeStage.durationMs * (challengeRule === 'clear' ? 3 : 1);
+  activeDurationMs = mode === 'practice' ? 0 : challengeRule === 'clear' ? clearRuleDurationMs(currentStageId) : activeStage.durationMs;
   score = 0;
   remainingMs = activeDurationMs;
   deadline = 0;
@@ -771,6 +933,15 @@ function startGame(mode = 'challenge', daily = false) {
   chillCooldownUntil = 0;
   chillCooldownRemainingMs = 0;
   simulationTimeMs = 0;
+  waveState = null;
+  wavesSpawned = 0;
+  waveInitialUnits = 0;
+  maxCombo = 0;
+  combo = 0;
+  lastComboSuccessMs = null;
+  waveClears = 0;
+  potEmptyMs = 0;
+  potHadNoScoopableUnits = false;
   boilingNow = false;
   spoonStreak = 0;
   lastSpoonUse = null;
@@ -796,6 +967,15 @@ function startGame(mode = 'challenge', daily = false) {
   showScreen('game');
   resize();
   spawn();
+  wavesSpawned = 1;
+  waveInitialUnits = getRemainingIngredientUnits();
+  if (waveEnabled) {
+    waveState = createWaveState({
+      stage: { id: currentStageId, counts: activeStage.counts },
+      startMs: simulationTimeMs
+    });
+  }
+  potHadNoScoopableUnits = getScoopableIngredientUnits() === 0;
   mouse.x = canvasWidth / 2;
   mouse.y = canvasHeight / 2;
   running = true;
@@ -939,6 +1119,7 @@ function endGame(reason = 'timeout') {
     <div>🌶️ 雜料撈起：<strong>${scooped.debris}</strong> 份｜清除率 <strong>${formatCategoryCleanliness('debris', '雜料')}</strong></div>
     <div>🫧 鍋中剩餘：<strong>${remaining}</strong> 份食材</div>
     <div>🎯 工具正確率：<strong>${correctRate}%</strong>｜❌ 失誤率：<strong>${errorRate}%</strong>（${scooped.fail} 次）</div>
+    ${challengeRule === 'score' ? `<div>🌊 波次數：<strong>${wavesSpawned}</strong>｜最高連擊：<strong>${maxCombo}</strong>｜清波次數：<strong>${waveClears}</strong></div>` : ''}
     ${challengeRule === 'perfect' ? `<div>❤️ 剩餘命數：<strong>${lives}</strong>／${CONFIG.PERFECT_LIVES}</div>` : ''}
     <div>🥣 帶走湯汁估算：<strong>${Math.round(soupLossMl)} mL</strong></div>
     <div>❄️ 冷藏凝油：<strong>${chillUsed ? '已使用' : '未使用'}</strong></div>
@@ -976,10 +1157,13 @@ function updateMenuDescriptions() {
   perfectOption.textContent = `無失誤挑戰｜${CONFIG.PERFECT_LIVES} 條命，時間到仍有命即完成`;
   stageDescription.textContent = `${stage.description} 食材：肉沫 ${stage.counts.meat}、蔬菜 ${stage.counts.veg}、浮油 ${stage.counts.oil}、骨頭 ${stage.counts.bone}。`;
   ruleDescription.textContent = ruleSelect.value === 'clear'
-    ? `${rule.description} 時間加長為此關卡的 3 倍。`
-    : rule.description;
+    ? `${rule.description} 時限：新手 75 秒、家常 60 秒、熱鬧 55 秒。`
+    : ruleSelect.value === 'score'
+      ? '時間內盡量撈取；會定時或低量分波補料，成功連擊與清波獎勵可提高得分。'
+      : rule.description;
   brothDescription.textContent = broth.description;
-  document.getElementById('startBtn').textContent = `開始${rule.name}（${Math.round(stage.durationMs * (ruleSelect.value === 'clear' ? 3 : 1) / 1000)} 秒）`;
+  const durationMs = ruleSelect.value === 'clear' ? clearRuleDurationMs(stageSelect.value) : stage.durationMs;
+  document.getElementById('startBtn').textContent = `開始${rule.name}（${Math.round(durationMs / 1000)} 秒）`;
   document.getElementById('stageRecommendation').textContent = unlockedAchievements.includes('first')
     ? '推薦：想放慢節奏可先練習；熟悉工具後，再挑戰熱鬧滿鍋或更嚴格規則。'
     : '初次遊玩建議先選「新手小鍋」或「練習辨認」；關卡不鎖定，可自由嘗試。';
@@ -1071,7 +1255,12 @@ function installTestHook() {
     gameMode: () => gameMode,
     successfulScoops: () => successfulScoops,
     playedMs: () => playedMs,
-    lives: () => lives
+    lives: () => lives,
+    waves: () => wavesSpawned,
+    maxCombo: () => maxCombo,
+    waveClears: () => waveClears,
+    potEmptyMs: () => potEmptyMs,
+    unitsInPot: () => getRemainingIngredientUnits()
   };
   Object.entries(getters).forEach(([key, get]) => Object.defineProperty(state, key, { enumerable: true, get }));
   window.__hotpot = {
@@ -1079,7 +1268,7 @@ function installTestHook() {
     TOOL_CONFIG,
     selectTool,
     scoopAt,
-    hitTest: (x, y, toolId) => getHitParticles(particles, x, y, toolId, currentPotRadius()),
+    hitTest: (x, y, toolId) => getHitParticles(getScoopableParticles(), x, y, toolId, currentPotRadius()),
     start: startFromTest,
     pause: pauseGame,
     resume: resumeGame,
@@ -1113,6 +1302,10 @@ motionToggle.addEventListener('change', () => {
   document.documentElement.classList.toggle('reduce-motion', reduceMotion);
   saveSettings();
 });
+practiceWavesToggle.addEventListener('change', () => {
+  practiceWavesEnabled = practiceWavesToggle.checked;
+  saveSettings();
+});
 document.getElementById('soundToggle').addEventListener('change', event => {
   soundEnabled = event.target.checked;
   saveSettings();
@@ -1123,7 +1316,7 @@ skinSelect.addEventListener('change', () => {
   saveSettings();
   if (running) {
     drawSoup(performance.now());
-    drawParticles(performance.now());
+    drawParticles(performance.now(), simulationTimeMs);
     drawTool();
   }
 });
@@ -1191,7 +1384,7 @@ window.addEventListener('resize', () => {
   resize();
   if (!running) return;
   drawSoup(performance.now());
-  drawParticles(performance.now());
+  drawParticles(performance.now(), simulationTimeMs);
   drawTool();
 });
 

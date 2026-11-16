@@ -4,6 +4,7 @@ import {
   isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin, updateToolTip
 } from './game.js';
 import { BROTHS, POT_RADIUS_RATIO, POT_SKINS, scaledToolShape } from './config.js';
+import { WAVE_FADE_IN_MS } from './balance.js';
 const POT_GEOMETRY = Object.freeze({
   outerRadiusX: POT_RADIUS_RATIO,
   outerRadiusY: .93,
@@ -366,13 +367,24 @@ function drawDebris(p) {
   ctx.restore();
 }
 
-export function drawParticles(now = performance.now()) {
+export function drawParticles(now = performance.now(), simulationNowMs = now) {
   // Oil sits on the surface, meat and vegetables catch the light above it.
-  particleGroups.oil.forEach(p => drawOil(p, now));
-  particleGroups.meat.forEach(drawMeat);
-  particleGroups.veg.forEach(drawVegetable);
-  particleGroups.bone.forEach(drawBone);
-  particleGroups.debris.forEach(drawDebris);
+  const drawWithFade = (particle, draw) => {
+    if (!Number.isFinite(particle.spawnedAtMs)) {
+      draw(particle);
+      return;
+    }
+    const alpha = Math.max(0, Math.min(1, (simulationNowMs - particle.spawnedAtMs) / WAVE_FADE_IN_MS));
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    draw(particle);
+    ctx.restore();
+  };
+  particleGroups.oil.forEach(p => drawWithFade(p, particle => drawOil(particle, now)));
+  particleGroups.meat.forEach(p => drawWithFade(p, drawMeat));
+  particleGroups.veg.forEach(p => drawWithFade(p, drawVegetable));
+  particleGroups.bone.forEach(p => drawWithFade(p, drawBone));
+  particleGroups.debris.forEach(p => drawWithFade(p, drawDebris));
 }
 
 export function drawTool() {

@@ -21,6 +21,11 @@ export function updatePhysics(frameScale, state) {
   const broth = BROTHS[brothId];
   const motionScale = reduceMotion ? .18 : 1;
   particles.forEach(p => {
+    if (p.waveIncoming) {
+      p.x += p.vx * frameScale * motionScale;
+      p.y += p.vy * frameScale * motionScale;
+      return;
+    }
     if (boilingNow && !reduceMotion) {
       const dx = p.x - cx;
       const dy = p.y - cy;
@@ -49,7 +54,7 @@ export function updatePhysics(frameScale, state) {
     }
   });
 
-  const oils = particleGroups.oil;
+  const oils = particleGroups.oil.filter(oil => !oil.waveIncoming);
   const liveOils = new Set(oils);
   const oilOrder = new Map(oils.map((oil, index) => [oil, index]));
   const cellSize = OIL_GRID_CELL_SIZE;
