@@ -21,10 +21,16 @@ export const SPOON_STREAK_SOUP_LOSS_INCREMENT = .25;
 export const SPOON_STREAK_WINDOW_MS = 2_000;
 export const SPOON_STREAK_MAX = 4;
 export const PARTICLE_RENDER_TYPES = Object.freeze(['oil', 'meat', 'veg', 'bone', 'debris']);
-export const WRONG_TOOL_REMOVE_CHANCE = .45;
 export const WRONG_TOOL_PENALTY_PER_RADIUS = .8;
 export const WRONG_TOOL_BASE_PENALTY = 2;
 export const WRONG_TOOL_SOUP_LOSS_ML = 2;
+export const FIRST_ACHIEVEMENT_MIN_SUCCESSFUL_SCOOPS = 5;
+export const FIRST_ACHIEVEMENT_MIN_PLAY_MS = 15_000;
+export const DAILY_ACHIEVEMENT_MIN_SUCCESSFUL_SCOOPS = 8;
+export const RESULT_COMMENT_MIN_ACCURACY_PERCENT = 70;
+export const RESULT_COMMENT_HIGH_SCORE_THRESHOLD = 160;
+export const RESULT_COMMENT_MID_SCORE_THRESHOLD = 80;
+export const RESULT_COMMENT_CLEAN_PERCENT = 75;
 export const SOUP_LOSS_CAP_ML = 5_000;
 export const OIL_GRID_CELL_SIZE = 64;
 export const OIL_MERGE_BASE_RATE = .035;
@@ -72,11 +78,11 @@ export const POT_SKINS = {
 };
 
 export const ACHIEVEMENTS = [
-  { id: 'first', name: '第一次開鍋', description: '完成一局遊戲。', skin: 'jade' },
+  { id: 'first', name: '第一次開鍋', description: '成功撈取 5 次或遊玩滿 15 秒。', skin: 'jade' },
   { id: 'clean', name: '清鍋達人', description: '單局清潔度達 100%。', skin: 'copper' },
   { id: 'accurate', name: '工具達人', description: '至少撈取 8 次，工具正確率達 90%。' },
   { id: 'gentle', name: '惜湯高手', description: '成功撈取 8 份以上，湯汁損失不超過 20 mL。' },
-  { id: 'daily', name: '每日鍋友', description: '完成當日固定盤面挑戰；舊日期分享盤不計入。' },
+  { id: 'daily', name: '每日鍋友', description: '使用當日固定種子成功撈取至少 8 次。' },
   { id: 'steady', name: '穩手撈料', description: '連續 5 次正確撈取，中途沒有工具失誤。' }
 ];
 

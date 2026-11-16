@@ -68,14 +68,15 @@ describe('rules', () => {
     expect(overallCleanliness({}, {}).cleanliness).toBe(100);
   });
 
-  it('preserves mission, achievement, and result-comment grading rules', () => {
-    expect(missionSuccess('clear', 'timeout', [])).toBe(true);
-    expect(missionSuccess('clear', 'timeout', [{}])).toBe(false);
-    expect(missionSuccess('perfect', 'manual', [{}])).toBe(true);
-    expect(missionSuccess('perfect', 'mistake', [{}])).toBe(false);
-    expect(missionSuccess('score', 'timeout', [{}])).toBeNull();
-    expect(achievementConditions({ cleanliness: 100, correctRate: 100, attempts: 0, successful: 0, totalSoupLoss: 0, isTodayDailyChallenge: false })).toMatchObject({ first: true, clean: true, accurate: false, gentle: false, daily: false });
-    expect(resultComment({ gameMode: 'challenge', challengeRule: 'score', missionWon: null, cleanliness: 75, score: 0, remaining: 1 })).toContain('湯底清得很漂亮');
+  it('evaluates mission, achievement, and result-comment rules', () => {
+    const allRemoved = { particles: [], initialMass: { meat: 1 }, removedMass: { meat: 1 } };
+    expect(missionSuccess('clear', 'cleared', allRemoved)).toBe(true);
+    expect(missionSuccess('clear', 'timeout', allRemoved)).toBe(false);
+    expect(missionSuccess('perfect', 'timeout', { failures: 0 })).toBe(true);
+    expect(missionSuccess('perfect', 'mistake', { failures: 1 })).toBe(false);
+    expect(missionSuccess('score', 'timeout', {})).toBeNull();
+    expect(achievementConditions({ cleanliness: 100, correctRate: 100, attempts: 0, successful: 0, successfulScoops: 0, playedMs: 0, totalSoupLoss: 0, isTodayDailyChallenge: false })).toMatchObject({ first: false, clean: true, accurate: false, gentle: false, daily: false });
+    expect(resultComment({ gameMode: 'challenge', challengeRule: 'score', missionWon: null, cleanliness: 75, score: 0, correctRate: 70, remaining: 1 })).toContain('再試一次');
     expect(resultComment({ gameMode: 'practice', challengeRule: 'score', missionWon: null, cleanliness: 0, score: 0, remaining: 1 })).toContain('練習完成');
   });
 });

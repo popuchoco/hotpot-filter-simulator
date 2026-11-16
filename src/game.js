@@ -3,9 +3,9 @@ import * as CONFIG from './config.js';
 import { drawParticles, drawSoup, drawTool } from './renderer.js';
 import { updatePhysics } from './physics.js';
 import {
-  achievementConditions, applySoupLoss, categoryCleanliness, getHitParticles,
-  isGoodToolFor, missionSuccess, overallCleanliness, resultComment as gradeResultComment,
-  scoreParticle, soupLossForParticle, wrongToolPenalty
+  achievementConditions, allFoodCorrectlyRemoved, applySoupLoss, categoryCleanliness, getHitParticles,
+  isEligibleDailyChallenge, isGoodToolFor, missionSuccess, overallCleanliness,
+  resultComment as gradeResultComment, scoopDecision, scoreParticle, soupLossForParticle, wrongToolPenalty
 } from './rules.js';
 import { dailyChallengeDescriptor as parseDailyChallengeDescriptor, dailyDateTaipei, formatSeed, hashSeed, mulberry32 } from './rng.js';
 
@@ -14,7 +14,7 @@ const {
   BROTHS, CHILL_COST_MS, CHILL_EFFECT_MS, CHILL_PRACTICE_COOLDOWN_MS, FRAME_SCALE_MAX,
   PARTICLE_RENDER_TYPES, POT_SKINS, PRACTICE_STAGE, PREVIOUS_RESULTS_KEY, RULES,
   SETTINGS_KEY, SPOON_STREAK_MAX, SPOON_STREAK_WINDOW_MS, STAGE_RECORDS_KEY,
-  STAGES, TOOL_CONFIG, WRONG_TOOL_REMOVE_CHANCE, WRONG_TOOL_SOUP_LOSS_ML
+  STAGES, TOOL_CONFIG, WRONG_TOOL_SOUP_LOSS_ML
 } = CONFIG;
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -100,6 +100,9 @@ let audioContext = null;
 let lastCountdownSecond = null;
 let spoonStreak = 0;
 let lastSpoonUse = null;
+let successfulScoops = 0;
+let playedMs = 0;
+let lastPlayTime = null;
 let selectedSkin = 'steel';
 let endReason = null;
 let lastResult = null;
@@ -210,9 +213,12 @@ function renderAchievements() {
   updateSkinOptions();
 }
 
-function unlockAchievementsForRun({ cleanliness, correctRate, attempts, successful, totalSoupLoss }) {
+function unlockAchievementsForRun({ cleanliness, correctRate, attempts, successful, successfulScoops: runSuccessfulScoops, playedMs: runPlayedMs, totalSoupLoss }) {
   const newlyUnlocked = [];
-  const conditions = achievementConditions({ cleanliness, correctRate, attempts, successful, totalSoupLoss, isTodayDailyChallenge });
+  const conditions = achievementConditions({
+    cleanliness, correctRate, attempts, successful, successfulScoops: runSuccessfulScoops,
+    playedMs: runPlayedMs, totalSoupLoss, isTodayDailyChallenge
+  });
   ACHIEVEMENTS.forEach(item => {
     if (conditions[item.id] && !unlockedAchievements.includes(item.id)) {
       unlockedAchievements.push(item.id);
@@ -266,6 +272,11 @@ function dailyChallengeDescriptor() {
 
 function random() {
   return seededRandom ? seededRandom() : Math.random();
+}
+
+function recordPlayedTime(now = performance.now()) {
+  if (running && lastPlayTime !== null) playedMs += Math.max(0, now - lastPlayTime);
+  lastPlayTime = now;
 }
 
 function resize() {
@@ -431,29 +442,25 @@ function tryScoop() {
   let crackedBone = false;
   caught.forEach((p, i) => {
     const chilled = isOilChilled(now);
-    const good = isGoodToolFor(p, currentTool, chilled);
-    if (good) {
+    const decision = scoopDecision(p, currentTool, chilled);
+    if (decision.correct) {
       gained += scoreParticle(p, currentTool, { oilChilled: chilled });
       soupLossMl = applySoupLoss(soupLossMl, soupLossForParticle(p, currentTool, spoonStreak));
       successfulActions++;
       if (p.type === 'bone') scooped.boneHits++;
-      if (p.type === 'bone' && p.integrity > 1) {
+      if (!decision.remove) {
         p.integrity--;
         crackedBone = true;
         showHint('骨頭較大，要用有洞湯勺再撈一次！');
       } else {
         scooped[p.type]++;
         remove.add(indices[i]);
-        removedMass[p.type] += p.mass || 1;
+        removedMass[p.type] += decision.removedMass;
       }
     } else {
       lost += wrongToolPenalty(p);
       scooped.fail++;
-      if (random() < WRONG_TOOL_REMOVE_CHANCE) {
-        remove.add(indices[i]);
-        removedMass[p.type] += p.mass || 1;
-        soupLossMl = applySoupLoss(soupLossMl, WRONG_TOOL_SOUP_LOSS_ML);
-      }
+      soupLossMl = applySoupLoss(soupLossMl, WRONG_TOOL_SOUP_LOSS_ML);
     }
   });
 
@@ -480,11 +487,12 @@ function tryScoop() {
     correctActionStreak = 0;
   }
   updateToolTip();
+  if (scooped.fail === failuresBeforeScoop && successfulActions > 0) successfulScoops++;
   if (challengeRule === 'perfect' && scooped.fail > 0) {
     endGame('mistake');
     return;
   }
-  if (challengeRule === 'clear' && particles.length === 0) {
+  if (challengeRule === 'clear' && allFoodCorrectlyRemoved(particles, initialMass, removedMass)) {
     endGame('cleared');
     return;
   }
@@ -671,6 +679,7 @@ function updateTimerDisplay() {
 
 function loop(now) {
   if (!running) return;
+  recordPlayedTime(now);
   if (gameMode === 'challenge') remainingMs = Math.max(0, deadline - now);
   updateTimerDisplay();
   if (gameMode === 'challenge') {
@@ -715,7 +724,9 @@ function startGame(mode = 'challenge', daily = false) {
   dailyChallengeSeed = dailyInfo?.seed ?? null;
   dailyChallengeDate = dailyInfo?.date ?? '';
   sharedDailyChallenge = Boolean(dailyInfo?.shared);
-  isTodayDailyChallenge = isDailyChallenge && dailyChallengeDate === dailyDateTaipei();
+  isTodayDailyChallenge = isDailyChallenge && isEligibleDailyChallenge({
+    date: dailyChallengeDate, seed: dailyChallengeSeed, todayDate: dailyDateTaipei()
+  });
   currentStageId = isDailyChallenge ? 'home' : (stageSelect.value in STAGES ? stageSelect.value : 'home');
   challengeRule = isDailyChallenge ? 'score' : (mode === 'practice' ? 'score' : (ruleSelect.value in RULES ? ruleSelect.value : 'score'));
   brothId = isDailyChallenge ? ['clear', 'mala', 'miso'][dailyChallengeSeed % 3] : (brothSelect.value in BROTHS ? brothSelect.value : 'clear');
@@ -738,6 +749,9 @@ function startGame(mode = 'challenge', daily = false) {
   boilingNow = false;
   spoonStreak = 0;
   lastSpoonUse = null;
+  successfulScoops = 0;
+  playedMs = 0;
+  lastPlayTime = null;
   lastCountdownSecond = null;
   scooped = { meat: 0, veg: 0, oil: 0, bone: 0, debris: 0, boneHits: 0, fail: 0 };
   correctActionStreak = 0;
@@ -761,6 +775,7 @@ function startGame(mode = 'challenge', daily = false) {
   mouse.x = canvasWidth / 2;
   mouse.y = canvasHeight / 2;
   running = true;
+  lastPlayTime = performance.now();
   pauseBtn.textContent = '暫停';
   pauseBtn.setAttribute('aria-pressed', 'false');
   updateToolTip();
@@ -781,6 +796,7 @@ function startGame(mode = 'challenge', daily = false) {
 function pauseGame() {
   if (!running || gameEnded) return;
   const now = performance.now();
+  recordPlayedTime(now);
   if (gameMode === 'challenge') remainingMs = Math.max(0, deadline - now);
   if (gameMode === 'challenge' && remainingMs <= 0) {
     endGame();
@@ -802,6 +818,7 @@ function resumeGame() {
   if (running || gameEnded || (gameMode === 'challenge' && remainingMs <= 0)) return;
   const now = performance.now();
   running = true;
+  lastPlayTime = now;
   if (gameMode === 'challenge') deadline = now + remainingMs;
   if (chillUsed && chillRemainingMs > 0) {
     chilledUntil = now + chillRemainingMs;
@@ -830,9 +847,11 @@ function formatCategoryCleanliness(type, label) {
 
 function endGame(reason = 'timeout') {
   if (gameEnded) return;
+  recordPlayedTime();
   gameEnded = true;
   endReason = reason;
   running = false;
+  lastPlayTime = null;
   cancelAnimationFrame(animationFrame);
   remainingMs = 0;
   updateTimerDisplay();
@@ -845,7 +864,9 @@ function endGame(reason = 'timeout') {
   const attempts = successful + scooped.fail;
   const correctRate = attempts ? Math.round(successful / attempts * 100) : 0;
   const errorRate = attempts ? Math.round(scooped.fail / attempts * 100) : 0;
-  const missionWon = missionSuccess(challengeRule, reason, particles);
+  const missionWon = missionSuccess(challengeRule, reason, {
+    particles, initialMass, removedMass, failures: scooped.fail
+  });
   lastResult = { reason, missionWon, cleanliness, categoryRates, remaining, successful, attempts, correctRate };
   cleanlinessEl.textContent = hasTargets ? `${cleanliness}%` : '100%（無清除目標）';
 
@@ -905,8 +926,10 @@ function endGame(reason = 'timeout') {
     savePreviousResults();
   }
 
-  const newlyUnlocked = unlockAchievementsForRun({ cleanliness, correctRate, attempts, successful, totalSoupLoss: soupLossMl });
-  resultComment.textContent = gradeResultComment({ gameMode, challengeRule, missionWon, cleanliness, score, remaining });
+  const newlyUnlocked = unlockAchievementsForRun({
+    cleanliness, correctRate, attempts, successful, successfulScoops, playedMs, totalSoupLoss: soupLossMl
+  });
+  resultComment.textContent = gradeResultComment({ gameMode, challengeRule, missionWon, cleanliness, score, correctRate, remaining, reason });
   if (newlyUnlocked.length) resultComment.textContent += ` 新解鎖：${newlyUnlocked.join('、')}！`;
   shareBtn.classList.toggle('hidden', !isDailyChallenge);
   showScreen('result');
@@ -1015,7 +1038,9 @@ function installTestHook() {
     unlockedAchievements: () => unlockedAchievements,
     brothId: () => brothId,
     challengeRule: () => challengeRule,
-    gameMode: () => gameMode
+    gameMode: () => gameMode,
+    successfulScoops: () => successfulScoops,
+    playedMs: () => playedMs
   };
   Object.entries(getters).forEach(([key, get]) => Object.defineProperty(state, key, { enumerable: true, get }));
   window.__hotpot = {
