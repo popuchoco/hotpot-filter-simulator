@@ -48,9 +48,10 @@ describe('S1 rule and achievement regressions', () => {
     expect(missionSuccess('clear', 'cleared', { particles: [], initialMass, removedMass })).toBe(true);
   });
 
-  it('only awards a perfect win on timeout with no failures; manual end is aborted', () => {
+  it('keeps perfect manual ends aborted and allows timeout with remaining lives', () => {
     expect(missionSuccess('perfect', 'manual', { failures: 0 })).toBe(false);
-    expect(missionSuccess('perfect', 'timeout', { failures: 1 })).toBe(false);
+    expect(missionSuccess('perfect', 'timeout', { failures: 1 })).toBe(true);
+    expect(missionSuccess('perfect', 'timeout', { failures: 3 })).toBe(false);
     expect(missionSuccess('perfect', 'timeout', { failures: 0 })).toBe(true);
     expect(resultComment({
       gameMode: 'challenge', challengeRule: 'perfect', missionWon: false,

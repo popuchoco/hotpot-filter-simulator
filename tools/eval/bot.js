@@ -6,9 +6,11 @@ window.__bot = function (strategy, intervalMs = 600, switchMs = 250) {
     if (particle.type === 'meat' || particle.type === 'debris') return 'strainer';
     return 'holey';
   };
-  const hitSet = (x, y, tool) => api.state.particles.filter(particle =>
-    Math.hypot(particle.x - x, particle.y - y) < api.TOOL_CONFIG[tool].radius * .8 + particle.r * .4
-  );
+  const hitSet = (x, y, tool) => api.hitTest
+    ? api.hitTest(x, y, tool)
+    : api.state.particles.filter(particle =>
+      Math.hypot(particle.x - x, particle.y - y) < api.TOOL_CONFIG[tool].radius * .8 + particle.r * .4
+    );
   const goodFor = (particle, tool) => {
     if (particle.type === 'oil' && api.isOilChilled()) return tool === 'strainer';
     if (particle.type === 'bone') return tool === 'holey';

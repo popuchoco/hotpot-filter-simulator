@@ -4,20 +4,92 @@ import {
   DAILY_ACHIEVEMENT_MIN_SUCCESSFUL_SCOOPS, FIRST_ACHIEVEMENT_MIN_PLAY_MS,
   FIRST_ACHIEVEMENT_MIN_SUCCESSFUL_SCOOPS, RESULT_COMMENT_HIGH_SCORE_THRESHOLD,
   RESULT_COMMENT_CLEAN_PERCENT, RESULT_COMMENT_MID_SCORE_THRESHOLD, RESULT_COMMENT_MIN_ACCURACY_PERCENT,
-  SOUP_LOSS_CAP_ML, SPOON_STREAK_SOUP_LOSS_INCREMENT, TOOL_CONFIG,
+  PERFECT_LIVES, SOUP_LOSS_CAP_ML, SPOON_STREAK_SOUP_LOSS_INCREMENT, TOOL_CONFIG,
+  TOOL_SHAPE_REFERENCE_POT_RADIUS, scaledToolShape,
   VEG_SOUP_LOSS_MULTIPLIER, WRONG_TOOL_BASE_PENALTY, WRONG_TOOL_PENALTY_PER_RADIUS
 } from './config.js';
 import { hashSeed } from './rng.js';
 
-export function getHitParticles(particles, x, y, toolId) {
-  const tool = TOOL_CONFIG[toolId];
-  return particles.filter(particle => Math.hypot(particle.x - x, particle.y - y) < tool.radius * .8 + particle.r * .4);
+// Finds the true closest point on the filled ellipse using the standard Lagrange
+// multiplier equation. A particle is caught when its circle touches that ellipse.
+function circleIntersectsEllipse(dx, dy, particleRadius, radiusX, radiusY) {
+  const x = Math.abs(dx);
+  const y = Math.abs(dy);
+  const a2 = radiusX * radiusX;
+  const b2 = radiusY * radiusY;
+  if ((x * x) / a2 + (y * y) / b2 <= 1) return true;
+
+  const ellipseEquation = lambda => {
+    const xTerm = radiusX * x / (lambda + a2);
+    const yTerm = radiusY * y / (lambda + b2);
+    return xTerm * xTerm + yTerm * yTerm - 1;
+  };
+  let low = 0;
+  let high = Math.max(radiusX * x, radiusY * y, 1);
+  while (ellipseEquation(high) > 0) high *= 2;
+  for (let iteration = 0; iteration < 40; iteration++) {
+    const middle = (low + high) / 2;
+    if (ellipseEquation(middle) > 0) low = middle;
+    else high = middle;
+  }
+  const closestX = a2 * x / (high + a2);
+  const closestY = b2 * y / (high + b2);
+  return Math.hypot(x - closestX, y - closestY) <= particleRadius + 1e-9;
+}
+
+export function getHitParticles(particles, x, y, toolId, potRadius = TOOL_SHAPE_REFERENCE_POT_RADIUS) {
+  const shape = scaledToolShape(toolId, potRadius);
+  if (!shape) return [];
+  return particles.filter(particle => {
+    const dx = particle.x - x;
+    const dy = particle.y - y;
+    const particleRadius = Math.max(0, particle.r || 0);
+    if (shape.type === 'circle') return Math.hypot(dx, dy) <= shape.radius + particleRadius;
+    const cosine = Math.cos(shape.rotation);
+    const sine = Math.sin(shape.rotation);
+    const localX = cosine * dx + sine * dy;
+    const localY = -sine * dx + cosine * dy;
+    return circleIntersectsEllipse(localX, localY, particleRadius, shape.radiusX, shape.radiusY);
+  });
 }
 
 export function isGoodToolFor(particle, toolId, oilChilled = false) {
   if (particle.type === 'oil' && oilChilled) return toolId === 'strainer';
   if (particle.type === 'bone') return toolId === 'holey';
   return TOOL_CONFIG[toolId].types.includes(particle.type);
+}
+
+export function selectPrimaryTarget(particles, x, y) {
+  let primary = null;
+  let nearestDistance = Infinity;
+  for (const particle of particles) {
+    const distance = (particle.x - x) ** 2 + (particle.y - y) ** 2;
+    if (distance < nearestDistance) {
+      primary = particle;
+      nearestDistance = distance;
+    }
+  }
+  return primary;
+}
+
+export function getScoopTargets(particles, x, y, toolId, potRadius, oilChilled = false) {
+  const hits = getHitParticles(particles, x, y, toolId, potRadius);
+  const primary = selectPrimaryTarget(hits, x, y);
+  const suitable = hits.filter(particle => isGoodToolFor(particle, toolId, oilChilled));
+  return {
+    hits,
+    primary,
+    suitable,
+    failure: Boolean(primary && !isGoodToolFor(primary, toolId, oilChilled))
+  };
+}
+
+export function loseLife(lives) {
+  return Math.max(0, Math.floor(lives) - 1);
+}
+
+export function noLivesRemaining(lives) {
+  return lives <= 0;
 }
 
 export function scoopDecision(particle, toolId, oilChilled = false) {
@@ -75,9 +147,12 @@ export function allFoodCorrectlyRemoved(particles, initialMass, removedMass) {
   );
 }
 
-export function missionSuccess(rule, reason, { particles = [], initialMass = {}, removedMass = {}, failures = 0 } = {}) {
+export function missionSuccess(rule, reason, {
+  particles = [], initialMass = {}, removedMass = {}, failures = 0,
+  lives = Math.max(0, PERFECT_LIVES - failures)
+} = {}) {
   if (rule === 'clear') return reason === 'cleared' && allFoodCorrectlyRemoved(particles, initialMass, removedMass);
-  if (rule === 'perfect') return reason === 'timeout' && failures === 0;
+  if (rule === 'perfect') return reason === 'timeout' && lives > 0;
   return null;
 }
 
@@ -95,11 +170,17 @@ export function achievementConditions({ cleanliness, correctRate, attempts, succ
   };
 }
 
-export function resultComment({ gameMode, challengeRule, missionWon, cleanliness = 0, score, correctRate = 0, remaining, reason }) {
+export function resultComment({
+  gameMode, challengeRule, missionWon, cleanliness = 0, score, correctRate = 0,
+  remaining, reason, failures = 0, lives = 0
+}) {
   if (reason === 'manual') return gameMode === 'practice' ? '練習已中止。' : '本局已中止。';
   if (gameMode === 'practice') return '練習完成！可以換湯底、規則與工具再試；冷藏效果和冷卻時間都會依時間計算。';
   if (challengeRule === 'clear') return missionWon ? '全清成功！整鍋食材都已清乾淨。' : `全清挑戰未完成，還有 ${remaining} 份食材留在鍋中。`;
-  if (challengeRule === 'perfect') return missionWon ? '無失誤完成！全程都選對工具。' : '挑戰結束：出現工具失誤，試著看清食材後再下手。';
+  if (challengeRule === 'perfect') {
+    if (!missionWon) return '挑戰結束：命數用完，試著看清主要目標後再下手。';
+    return failures === 0 ? '無失誤完成！全程都選對工具。' : `剩 ${lives} 命完成！熟悉主要目標後，試著挑戰無失誤。`;
+  }
   if (correctRate < RESULT_COMMENT_MIN_ACCURACY_PERCENT) return '工具正確率還可以再提升，先確認食材類型再選工具。';
   if (score >= RESULT_COMMENT_HIGH_SCORE_THRESHOLD && cleanliness >= RESULT_COMMENT_CLEAN_PERCENT) return '湯底清得很漂亮！眼力和工具都掌握得很好。';
   if (score >= RESULT_COMMENT_HIGH_SCORE_THRESHOLD) return '撈得不錯，工具選擇也很準確！再留意鍋裡剩下的食材。';

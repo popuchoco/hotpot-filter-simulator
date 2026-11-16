@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { BROTHS, TOOL_CONFIG } from '../src/config.js';
+import { BROTHS, TOOL_CONFIG, TOOL_SHAPES } from '../src/config.js';
 import {
   achievementConditions, applySoupLoss, categoryCleanliness, getHitParticles,
   isGoodToolFor, missionSuccess, overallCleanliness, resultComment,
@@ -34,11 +34,21 @@ describe('rng', () => {
 });
 
 describe('rules', () => {
-  it('uses the strict current scoop hit boundary', () => {
-    const particle = { x: 0, y: 0, r: 10 };
-    const radius = TOOL_CONFIG.spoon.radius * .8 + particle.r * .4;
-    expect(getHitParticles([particle], radius - .001, 0, 'spoon')).toEqual([particle]);
-    expect(getHitParticles([particle], radius, 0, 'spoon')).toEqual([]);
+  it('uses the drawn ellipse and includes tangent particle circles', () => {
+    const particleRadius = 10;
+    const shape = TOOL_SHAPES.spoon;
+    const angle = shape.rotation;
+    const edgeDistance = shape.radiusX + particleRadius;
+    const tangentParticle = {
+      x: edgeDistance * Math.cos(angle), y: edgeDistance * Math.sin(angle), r: particleRadius
+    };
+    const outsideParticle = {
+      x: (edgeDistance + .001) * Math.cos(angle),
+      y: (edgeDistance + .001) * Math.sin(angle), r: particleRadius
+    };
+    expect(getHitParticles([tangentParticle], 0, 0, 'spoon')).toEqual([tangentParticle]);
+    expect(getHitParticles([outsideParticle], 0, 0, 'spoon')).toEqual([]);
+    expect(TOOL_CONFIG.spoon.radius).toBe(43);
   });
 
   it('classifies normal, chilled-oil, and bone tools as before', () => {
@@ -73,6 +83,8 @@ describe('rules', () => {
     expect(missionSuccess('clear', 'cleared', allRemoved)).toBe(true);
     expect(missionSuccess('clear', 'timeout', allRemoved)).toBe(false);
     expect(missionSuccess('perfect', 'timeout', { failures: 0 })).toBe(true);
+    expect(missionSuccess('perfect', 'timeout', { failures: 1 })).toBe(true);
+    expect(missionSuccess('perfect', 'timeout', { lives: 0 })).toBe(false);
     expect(missionSuccess('perfect', 'mistake', { failures: 1 })).toBe(false);
     expect(missionSuccess('score', 'timeout', {})).toBeNull();
     expect(achievementConditions({ cleanliness: 100, correctRate: 100, attempts: 0, successful: 0, successfulScoops: 0, playedMs: 0, totalSoupLoss: 0, isTodayDailyChallenge: false })).toMatchObject({ first: false, clean: true, accurate: false, gentle: false, daily: false });

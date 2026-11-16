@@ -3,9 +3,9 @@ import {
   boilingNow, brothId, canvasHeight, canvasWidth, ctx, currentTool, highContrast,
   isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin, updateToolTip
 } from './game.js';
-import { BROTHS, POT_SKINS, TOOL_CONFIG } from './config.js';
+import { BROTHS, POT_RADIUS_RATIO, POT_SKINS, scaledToolShape } from './config.js';
 const POT_GEOMETRY = Object.freeze({
-  outerRadiusX: .42,
+  outerRadiusX: POT_RADIUS_RATIO,
   outerRadiusY: .93,
   basinInset: .925,
   soupRadiusX: .875,
@@ -376,60 +376,69 @@ export function drawParticles(now = performance.now()) {
 }
 
 export function drawTool() {
-  const scoopRadius = TOOL_CONFIG[currentTool].radius;
+  const potRadius = Math.min(canvasWidth, canvasHeight) * POT_GEOMETRY.outerRadiusX;
+  const shape = scaledToolShape(currentTool, potRadius);
+  if (!shape) return;
   ctx.save();
   ctx.translate(mouse.x, mouse.y);
   ctx.strokeStyle = 'rgba(255,248,226,.92)';
   ctx.fillStyle = 'rgba(255,238,201,.16)';
-  ctx.lineWidth = 2.2;
+  ctx.lineWidth = shape.lineWidth;
   ctx.shadowColor = 'rgba(32,21,14,.6)';
   ctx.shadowBlur = 5;
 
   if (currentTool === 'spoon') {
     ctx.beginPath();
-    ctx.ellipse(0, 0, scoopRadius * .62, scoopRadius * .4, -.15, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, shape.radiusX, shape.radiusY, shape.rotation, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(0, scoopRadius * .28);
-    ctx.lineTo(0, scoopRadius * 1.25);
+    ctx.moveTo(0, shape.handleStart);
+    ctx.lineTo(0, shape.handleEnd);
     ctx.stroke();
   } else if (currentTool === 'holey') {
     ctx.beginPath();
-    ctx.ellipse(0, 0, scoopRadius * .61, scoopRadius * .39, -.12, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, shape.radiusX, shape.radiusY, shape.rotation, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.strokeStyle = 'rgba(255,248,226,.68)';
-    for (let i = -1; i <= 1; i++) {
-      for (let j = -1; j <= 1; j++) {
-        ctx.beginPath();
-        ctx.arc(i * 13, j * 9, 2.5, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-    }
-    ctx.beginPath();
-    ctx.moveTo(0, scoopRadius * .3);
-    ctx.lineTo(0, scoopRadius * 1.23);
-    ctx.stroke();
-  } else {
-    ctx.beginPath();
-    ctx.arc(0, 0, scoopRadius * .55, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = 'rgba(255,248,226,.7)';
-    for (let i = -2; i <= 2; i++) {
+    for (const [x, y] of shape.holes) {
       ctx.beginPath();
-      ctx.moveTo(i * 9, -scoopRadius * .5);
-      ctx.lineTo(i * 9, scoopRadius * .5);
-      ctx.moveTo(-scoopRadius * .5, i * 9);
-      ctx.lineTo(scoopRadius * .5, i * 9);
+      ctx.arc(x, y, shape.holeRadius, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.beginPath();
-    ctx.moveTo(0, scoopRadius * .5);
-    ctx.lineTo(0, scoopRadius * 1.25);
+    ctx.moveTo(0, shape.handleStart);
+    ctx.lineTo(0, shape.handleEnd);
     ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(0, 0, shape.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,248,226,.7)';
+    for (const [x1, y1, x2, y2] of shape.mesh) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(0, shape.handleStart);
+    ctx.lineTo(0, shape.handleEnd);
+    ctx.stroke();
+  }
+  if (new URLSearchParams(window.location.search).get('debug') === 'hit') {
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#4fffe4';
+    ctx.lineWidth = shape.lineWidth;
+    ctx.setLineDash([shape.lineWidth * 2, shape.lineWidth * 1.5]);
+    ctx.beginPath();
+    if (shape.type === 'circle') ctx.arc(0, 0, shape.radius, 0, Math.PI * 2);
+    else ctx.ellipse(0, 0, shape.radiusX, shape.radiusY, shape.rotation, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
   updateToolTip();
   ctx.restore();

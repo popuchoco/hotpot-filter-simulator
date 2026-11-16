@@ -24,6 +24,8 @@ export const PARTICLE_RENDER_TYPES = Object.freeze(['oil', 'meat', 'veg', 'bone'
 export const WRONG_TOOL_PENALTY_PER_RADIUS = .8;
 export const WRONG_TOOL_BASE_PENALTY = 2;
 export const WRONG_TOOL_SOUP_LOSS_ML = 2;
+export const UNSUITED_COLLATERAL_SOUP_LOSS_ML = .15;
+export const PERFECT_LIVES = 3;
 export const FIRST_ACHIEVEMENT_MIN_SUCCESSFUL_SCOOPS = 5;
 export const FIRST_ACHIEVEMENT_MIN_PLAY_MS = 15_000;
 export const DAILY_ACHIEVEMENT_MIN_SUCCESSFUL_SCOOPS = 8;
@@ -50,7 +52,7 @@ export const BOUNDARY_REFLECTION_MULTIPLIER = 1.7;
 export const RULES = {
   score: { name: '限時衝分', description: '時間內盡量撈取，挑戰更高分數。' },
   clear: { name: '全清挑戰', description: '限時清空整鍋；時間到仍有食材就算未完成。' },
-  perfect: { name: '無失誤挑戰', description: '限時撈取，只要選錯工具就會立即結束。' }
+  perfect: { name: '無失誤挑戰', description: '限時撈取，共有 3 條命；時間到仍有命數就算完成。' }
 };
 
 export const BROTHS = {
@@ -120,5 +122,50 @@ export const TOOL_CONFIG = {
     soupLossMl: 1, tip: '範圍較小、瞄準較精準，帶走湯汁少；適合肉沫和凝固油渣。'
   }
 };
+
+// The game canvas is capped at 510 px; at 1920×1080 this gives a pot radius of 214.2 px.
+// Shape dimensions below preserve the existing desktop head sizes at that reference radius.
+export const POT_RADIUS_RATIO = .42;
+export const POT_REFERENCE_CANVAS_SIZE = 510;
+export const TOOL_SHAPE_REFERENCE_POT_RADIUS = POT_REFERENCE_CANVAS_SIZE * POT_RADIUS_RATIO;
+export const TOOL_SHAPES = Object.freeze({
+  spoon: Object.freeze({
+    type: 'ellipse', radiusX: 26.66, radiusY: 17.2, rotation: -.15,
+    lineWidth: 2.2, handleStart: 12.04, handleEnd: 53.75
+  }),
+  holey: Object.freeze({
+    type: 'ellipse', radiusX: 21.96, radiusY: 14.04, rotation: -.12,
+    lineWidth: 2.2, handleStart: 10.8, handleEnd: 44.28,
+    holeRadius: 2.5,
+    holes: Object.freeze([
+      Object.freeze([-13, -9]), Object.freeze([0, -9]), Object.freeze([13, -9]),
+      Object.freeze([-13, 0]), Object.freeze([0, 0]), Object.freeze([13, 0]),
+      Object.freeze([-13, 9]), Object.freeze([0, 9]), Object.freeze([13, 9])
+    ])
+  }),
+  strainer: Object.freeze({
+    type: 'circle', radius: 16.5, lineWidth: 2.2, handleStart: 15, handleEnd: 37.5,
+    mesh: Object.freeze([
+      Object.freeze([-18, -15, -18, 15]), Object.freeze([-9, -15, -9, 15]),
+      Object.freeze([0, -15, 0, 15]), Object.freeze([9, -15, 9, 15]),
+      Object.freeze([18, -15, 18, 15]), Object.freeze([-15, -18, 15, -18]),
+      Object.freeze([-15, -9, 15, -9]), Object.freeze([-15, 0, 15, 0]),
+      Object.freeze([-15, 9, 15, 9]), Object.freeze([-15, 18, 15, 18])
+    ])
+  })
+});
+
+export function scaledToolShape(toolId, potRadius = TOOL_SHAPE_REFERENCE_POT_RADIUS) {
+  const shape = TOOL_SHAPES[toolId];
+  if (!shape) return null;
+  const scale = potRadius / TOOL_SHAPE_REFERENCE_POT_RADIUS;
+  const scaled = { ...shape, scale };
+  for (const key of ['radius', 'radiusX', 'radiusY', 'lineWidth', 'handleStart', 'handleEnd', 'holeRadius']) {
+    if (shape[key] !== undefined) scaled[key] = shape[key] * scale;
+  }
+  if (shape.holes) scaled.holes = shape.holes.map(([x, y]) => [x * scale, y * scale]);
+  if (shape.mesh) scaled.mesh = shape.mesh.map(line => line.map(value => value * scale));
+  return scaled;
+}
 
 export const CHILL_COST_MS = 3_000;

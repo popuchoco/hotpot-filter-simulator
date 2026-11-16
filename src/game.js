@@ -4,7 +4,7 @@ import { drawParticles, drawSoup, drawTool } from './renderer.js';
 import { updatePhysics } from './physics.js';
 import {
   achievementConditions, allFoodCorrectlyRemoved, applySoupLoss, categoryCleanliness, getHitParticles,
-  isEligibleDailyChallenge, isGoodToolFor, missionSuccess, overallCleanliness,
+  getScoopTargets, isEligibleDailyChallenge, isGoodToolFor, loseLife, missionSuccess, noLivesRemaining, overallCleanliness,
   resultComment as gradeResultComment, scoopDecision, scoreParticle, soupLossForParticle, wrongToolPenalty
 } from './rules.js';
 import { dailyChallengeDescriptor as parseDailyChallengeDescriptor, dailyDateTaipei, formatSeed, hashSeed, mulberry32 } from './rng.js';
@@ -100,6 +100,7 @@ let audioContext = null;
 let lastCountdownSecond = null;
 let spoonStreak = 0;
 let lastSpoonUse = null;
+let lives = CONFIG.PERFECT_LIVES;
 let successfulScoops = 0;
 let playedMs = 0;
 let lastPlayTime = null;
@@ -115,6 +116,10 @@ function refreshParticleGroups() {
   const groups = createParticleGroups();
   for (const particle of particles) groups[particle.type]?.push(particle);
   particleGroups = groups;
+}
+
+function currentPotRadius() {
+  return Math.min(canvasWidth, canvasHeight) * CONFIG.POT_RADIUS_RATIO;
 }
 
 bestScoreMenuEl.textContent = bestScore;
@@ -417,7 +422,11 @@ function updateCounts() {
 function tryScoop() {
   if (!running) return;
   const tool = TOOL_CONFIG[currentTool];
-  const caught = getHitParticles(particles, mouse.x, mouse.y, currentTool);
+  const now = performance.now();
+  const chilled = isOilChilled(now);
+  const { hits: caught, primary, suitable, failure: primaryFailed } = getScoopTargets(
+    particles, mouse.x, mouse.y, currentTool, currentPotRadius(), chilled
+  );
   const indices = caught.map(particle => particles.indexOf(particle));
 
   if (!caught.length) {
@@ -425,7 +434,6 @@ function tryScoop() {
     return;
   }
 
-  const now = performance.now();
   if (currentTool === 'spoon') {
     spoonStreak = lastSpoonUse !== null && now - lastSpoonUse <= SPOON_STREAK_WINDOW_MS ? Math.min(SPOON_STREAK_MAX, spoonStreak + 1) : 1;
     lastSpoonUse = now;
@@ -439,9 +447,20 @@ function tryScoop() {
   const remove = new Set();
   let successfulActions = 0;
   const failuresBeforeScoop = scooped.fail;
+  const suitableParticles = new Set(suitable);
   let crackedBone = false;
+  if (primaryFailed) {
+    lost += wrongToolPenalty(primary);
+    scooped.fail++;
+    if (challengeRule === 'perfect') lives = loseLife(lives);
+    soupLossMl = applySoupLoss(soupLossMl, WRONG_TOOL_SOUP_LOSS_ML);
+    if (challengeRule === 'perfect') updateTimerLabel();
+  }
   caught.forEach((p, i) => {
-    const chilled = isOilChilled(now);
+    if (!suitableParticles.has(p)) {
+      if (p !== primary) soupLossMl = applySoupLoss(soupLossMl, CONFIG.UNSUITED_COLLATERAL_SOUP_LOSS_ML);
+      return;
+    }
     const decision = scoopDecision(p, currentTool, chilled);
     if (decision.correct) {
       gained += scoreParticle(p, currentTool, { oilChilled: chilled });
@@ -457,10 +476,6 @@ function tryScoop() {
         remove.add(indices[i]);
         removedMass[p.type] += decision.removedMass;
       }
-    } else {
-      lost += wrongToolPenalty(p);
-      scooped.fail++;
-      soupLossMl = applySoupLoss(soupLossMl, WRONG_TOOL_SOUP_LOSS_ML);
     }
   });
 
@@ -470,8 +485,10 @@ function tryScoop() {
   scoreEl.textContent = score;
   updateCounts();
 
-  playSound(lost > 0 ? 'fail' : crackedBone ? 'boneCrack' : 'scoop');
-  if (gained > lost) {
+  playSound(primaryFailed ? 'fail' : crackedBone ? 'boneCrack' : 'scoop');
+  if (primaryFailed) {
+    showHint(`主要目標不適合這個工具，失去一命（剩 ${lives} 命）。`);
+  } else if (gained > lost) {
     const bigBonus = caught.some(p => p.r > BIG_PARTICLE_RADIUS && isGoodToolFor(p, currentTool, isOilChilled(now)));
     const coldBonus = caught.some(p => p.type === 'oil' && isOilChilled(now) && isGoodToolFor(p, currentTool, isOilChilled(now)));
     showHint(coldBonus ? `凝固油花撈起！細網很合適 +${gained - lost}` : bigBonus ? `大塊撈起！${tool.name} +${gained - lost}` : `撈取成功 +${gained - lost}`);
@@ -488,8 +505,8 @@ function tryScoop() {
   }
   updateToolTip();
   if (scooped.fail === failuresBeforeScoop && successfulActions > 0) successfulScoops++;
-  if (challengeRule === 'perfect' && scooped.fail > 0) {
-    endGame('mistake');
+  if (challengeRule === 'perfect' && noLivesRemaining(lives)) {
+    endGame('lives');
     return;
   }
   if (challengeRule === 'clear' && allFoodCorrectlyRemoved(particles, initialMass, removedMass)) {
@@ -677,6 +694,14 @@ function updateTimerDisplay() {
   timerFill.style.transform = `scaleX(${Math.max(0, remainingMs / activeDurationMs)})`;
 }
 
+function updateTimerLabel() {
+  const label = gameMode === 'practice'
+    ? `${BROTHS[brothId].name}｜練習模式`
+    : `剩餘時間｜${isDailyChallenge ? `${dailyChallengeDate} 每日挑戰` : `${activeStage.name} · ${RULES[challengeRule].name}`}｜${BROTHS[brothId].name}`;
+  timerLabel.textContent = challengeRule === 'perfect' ? `${label}｜剩餘命數 ${lives}` : label;
+  timerLabel.setAttribute('aria-live', challengeRule === 'perfect' ? 'polite' : 'off');
+}
+
 function loop(now) {
   if (!running) return;
   recordPlayedTime(now);
@@ -751,14 +776,13 @@ function startGame(mode = 'challenge', daily = false) {
   lastSpoonUse = null;
   successfulScoops = 0;
   playedMs = 0;
+  lives = CONFIG.PERFECT_LIVES;
   lastPlayTime = null;
   lastCountdownSecond = null;
   scooped = { meat: 0, veg: 0, oil: 0, bone: 0, debris: 0, boneHits: 0, fail: 0 };
   correctActionStreak = 0;
   scoreEl.textContent = '0';
-  timerLabel.textContent = mode === 'practice'
-    ? `${BROTHS[brothId].name}｜練習模式`
-    : `剩餘時間｜${isDailyChallenge ? `${dailyChallengeDate} 每日挑戰` : `${activeStage.name} · ${RULES[challengeRule].name}`}｜${BROTHS[brothId].name}`;
+  updateTimerLabel();
   updateTimerDisplay();
   updateCounts();
   currentTool = 'strainer';
@@ -865,9 +889,9 @@ function endGame(reason = 'timeout') {
   const correctRate = attempts ? Math.round(successful / attempts * 100) : 0;
   const errorRate = attempts ? Math.round(scooped.fail / attempts * 100) : 0;
   const missionWon = missionSuccess(challengeRule, reason, {
-    particles, initialMass, removedMass, failures: scooped.fail
+    particles, initialMass, removedMass, failures: scooped.fail, lives
   });
-  lastResult = { reason, missionWon, cleanliness, categoryRates, remaining, successful, attempts, correctRate };
+  lastResult = { reason, missionWon, cleanliness, categoryRates, remaining, successful, attempts, correctRate, failures: scooped.fail, lives };
   cleanlinessEl.textContent = hasTargets ? `${cleanliness}%` : '100%（無清除目標）';
 
   let newRecord = false;
@@ -915,6 +939,7 @@ function endGame(reason = 'timeout') {
     <div>🌶️ 雜料撈起：<strong>${scooped.debris}</strong> 份｜清除率 <strong>${formatCategoryCleanliness('debris', '雜料')}</strong></div>
     <div>🫧 鍋中剩餘：<strong>${remaining}</strong> 份食材</div>
     <div>🎯 工具正確率：<strong>${correctRate}%</strong>｜❌ 失誤率：<strong>${errorRate}%</strong>（${scooped.fail} 次）</div>
+    ${challengeRule === 'perfect' ? `<div>❤️ 剩餘命數：<strong>${lives}</strong>／${CONFIG.PERFECT_LIVES}</div>` : ''}
     <div>🥣 帶走湯汁估算：<strong>${Math.round(soupLossMl)} mL</strong></div>
     <div>❄️ 冷藏凝油：<strong>${chillUsed ? '已使用' : '未使用'}</strong></div>
     ${bestCompare ? `<div>${bestCompare}</div>` : ''}
@@ -929,7 +954,10 @@ function endGame(reason = 'timeout') {
   const newlyUnlocked = unlockAchievementsForRun({
     cleanliness, correctRate, attempts, successful, successfulScoops, playedMs, totalSoupLoss: soupLossMl
   });
-  resultComment.textContent = gradeResultComment({ gameMode, challengeRule, missionWon, cleanliness, score, correctRate, remaining, reason });
+  resultComment.textContent = gradeResultComment({
+    gameMode, challengeRule, missionWon, cleanliness, score, correctRate, remaining,
+    reason, failures: scooped.fail, lives
+  });
   if (newlyUnlocked.length) resultComment.textContent += ` 新解鎖：${newlyUnlocked.join('、')}！`;
   shareBtn.classList.toggle('hidden', !isDailyChallenge);
   showScreen('result');
@@ -944,6 +972,8 @@ function updateMenuDescriptions() {
   const stage = STAGES[stageSelect.value] || STAGES.home;
   const rule = RULES[ruleSelect.value] || RULES.score;
   const broth = BROTHS[brothSelect.value] || BROTHS.clear;
+  const perfectOption = ruleSelect.querySelector('option[value="perfect"]');
+  perfectOption.textContent = `無失誤挑戰｜${CONFIG.PERFECT_LIVES} 條命，時間到仍有命即完成`;
   stageDescription.textContent = `${stage.description} 食材：肉沫 ${stage.counts.meat}、蔬菜 ${stage.counts.veg}、浮油 ${stage.counts.oil}、骨頭 ${stage.counts.bone}。`;
   ruleDescription.textContent = ruleSelect.value === 'clear'
     ? `${rule.description} 時間加長為此關卡的 3 倍。`
@@ -1040,7 +1070,8 @@ function installTestHook() {
     challengeRule: () => challengeRule,
     gameMode: () => gameMode,
     successfulScoops: () => successfulScoops,
-    playedMs: () => playedMs
+    playedMs: () => playedMs,
+    lives: () => lives
   };
   Object.entries(getters).forEach(([key, get]) => Object.defineProperty(state, key, { enumerable: true, get }));
   window.__hotpot = {
@@ -1048,6 +1079,7 @@ function installTestHook() {
     TOOL_CONFIG,
     selectTool,
     scoopAt,
+    hitTest: (x, y, toolId) => getHitParticles(particles, x, y, toolId, currentPotRadius()),
     start: startFromTest,
     pause: pauseGame,
     resume: resumeGame,
