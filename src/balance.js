@@ -8,6 +8,7 @@ export const POT_CAP_RATIO = 1.3;
 export const BOIL_WAVE_PULL_MS = 1_500;
 export const MAX_DEBRIS_PER_WAVE = 2;
 export const WAVE_FADE_IN_MS = 600;
+export const FIRST_BOIL_DELAY_MS = 6_000;
 export const WAVE_SPAWN_RING_MIN_RATIO = 0.1;
 export const WAVE_SPAWN_RING_MAX_RATIO = 0.2;
 export const WAVE_SPAWN_AVOID_DISTANCE_FACTOR = 1.5;

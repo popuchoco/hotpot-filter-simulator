@@ -8,6 +8,9 @@ import {
 } from '../src/rules.js';
 import { dailyChallengeDescriptor, hashSeed, mulberry32 } from '../src/rng.js';
 import { updatePhysics } from '../src/physics.js';
+import { rescaleParticles } from '../src/geometry.js';
+import { boilStateAt } from '../src/rules.js';
+import { FIRST_BOIL_DELAY_MS } from '../src/balance.js';
 
 describe('rng', () => {
   it('matches the base hash for a daily seed string', () => {
@@ -34,6 +37,15 @@ describe('rng', () => {
 });
 
 describe('rules', () => {
+  it('delays the first boil and keeps the normal boil cadence', () => {
+    expect(FIRST_BOIL_DELAY_MS).toBe(6_000);
+    expect([0, 1, 5_999, FIRST_BOIL_DELAY_MS - .001].every(time => !boilStateAt(time, BROTHS.clear))).toBe(true);
+    expect(boilStateAt(FIRST_BOIL_DELAY_MS, BROTHS.clear)).toBe(true);
+    expect(boilStateAt(FIRST_BOIL_DELAY_MS + 1_000, BROTHS.clear)).toBe(true);
+    expect(boilStateAt(FIRST_BOIL_DELAY_MS + 3_800, BROTHS.clear)).toBe(false);
+    expect(boilStateAt(FIRST_BOIL_DELAY_MS + 14_000, BROTHS.clear)).toBe(true);
+  });
+
   it('uses the drawn ellipse and includes tangent particle circles', () => {
     const particleRadius = 10;
     const shape = TOOL_SHAPES.spoon;
@@ -93,6 +105,28 @@ describe('rules', () => {
   });
 });
 
+describe('geometry', () => {
+  it('preserves each particle’s position relative to the pot rim when resized', () => {
+    const particles = [100, 358, 620, 700].map(distance => ({
+      x: 620 + distance, y: 310, vx: 2, vy: -1
+    }));
+    const oldGeom = { width: 1_240, height: 620, potRadius: 620 };
+    const newGeom = { width: 716, height: 358, potRadius: 358 };
+    const scaled = rescaleParticles(particles, oldGeom, newGeom);
+    const rimFraction = (items, geom) => items.filter(particle =>
+      Math.hypot(particle.x - geom.width / 2, particle.y - geom.height / 2) >= geom.potRadius - 1e-9
+    ).length / items.length;
+
+    expect(scaled).not.toBe(particles);
+    expect(particles[0].x).toBe(720);
+    scaled.forEach((particle, index) => {
+      expect(particle.x).toBeCloseTo(358 + [100, 358, 620, 700][index] * 358 / 620, 10);
+      expect(particle.y).toBe(179);
+    });
+    expect(rimFraction(scaled, newGeom)).toBe(rimFraction(particles, oldGeom));
+  });
+});
+
 describe('physics', () => {
   it('steps particles in Node without DOM or canvas access', () => {
     const meat = { x: 100, y: 100, r: 5, vx: 1, vy: 0, type: 'meat' };
@@ -117,7 +151,7 @@ describe('physics', () => {
 });
 
 it('pure rules, rng, and physics sources do not reference browser globals', () => {
-  for (const moduleName of ['rules.js', 'rng.js', 'physics.js']) {
+  for (const moduleName of ['rules.js', 'rng.js', 'physics.js', 'geometry.js']) {
     const source = readFileSync(new URL(`../src/${moduleName}`, import.meta.url), 'utf8');
     expect(source).not.toMatch(/\b(?:document|window)\b/);
   }

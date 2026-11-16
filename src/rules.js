@@ -1,5 +1,5 @@
 import {
-  BIG_OIL_SCORE_MULTIPLIER, BIG_PARTICLE_RADIUS, BIG_VEG_SCORE_MULTIPLIER,
+  BIG_OIL_SCORE_MULTIPLIER, BIG_PARTICLE_RADIUS, BIG_VEG_SCORE_MULTIPLIER, BOIL_CYCLE_MS, BOIL_DURATION_MS,
   BONE_SCORE_BONUS, CHILLED_OIL_SCORE_MULTIPLIER, SCORE_BASE, SCORE_PER_RADIUS,
   DAILY_ACHIEVEMENT_MIN_SUCCESSFUL_SCOOPS, FIRST_ACHIEVEMENT_MIN_PLAY_MS,
   FIRST_ACHIEVEMENT_MIN_SUCCESSFUL_SCOOPS, RESULT_COMMENT_HIGH_SCORE_THRESHOLD,
@@ -9,10 +9,23 @@ import {
   VEG_SOUP_LOSS_MULTIPLIER, WRONG_TOOL_BASE_PENALTY, WRONG_TOOL_PENALTY_PER_RADIUS
 } from './config.js';
 import {
-  CLEAR_RULE_DURATION_MS, COMBO_MAX, COMBO_STEP, COMBO_WINDOW_MS,
+  CLEAR_RULE_DURATION_MS, COMBO_MAX, COMBO_STEP, COMBO_WINDOW_MS, FIRST_BOIL_DELAY_MS,
   WAVE_CLEAR_BONUS_PER_S
 } from './balance.js';
 import { hashSeed } from './rng.js';
+
+export function boilStateAt(simulationTimeMs, broth, {
+  firstBoilDelayMs = FIRST_BOIL_DELAY_MS,
+  cycleMs = BOIL_CYCLE_MS,
+  durationMs = BOIL_DURATION_MS
+} = {}) {
+  const elapsedSinceFirstBoil = simulationTimeMs - firstBoilDelayMs;
+  if (elapsedSinceFirstBoil < 0) return false;
+  const boilFactor = broth.boilFactor || 1;
+  const cycle = cycleMs / boilFactor;
+  const activeDuration = Math.min(cycle * .55, durationMs * boilFactor);
+  return (elapsedSinceFirstBoil % cycle) < activeDuration;
+}
 
 // Finds the true closest point on the filled ellipse using the standard Lagrange
 // multiplier equation. A particle is caught when its circle touches that ellipse.

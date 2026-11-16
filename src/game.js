@@ -2,8 +2,9 @@
 import * as CONFIG from './config.js';
 import { drawParticles, drawSoup, drawTool } from './renderer.js';
 import { updatePhysics } from './physics.js';
+import { rescaleParticles } from './geometry.js';
 import {
-  achievementConditions, allFoodCorrectlyRemoved, applySoupLoss, categoryCleanliness, getHitParticles,
+  achievementConditions, allFoodCorrectlyRemoved, applySoupLoss, boilStateAt, categoryCleanliness, getHitParticles,
   clearRuleDurationMs, comboMultiplier, getScoopTargets, isEligibleDailyChallenge, isGoodToolFor,
   loseLife, missionSuccess, nextCombo, noLivesRemaining, overallCleanliness,
   resultComment as gradeResultComment, scoopDecision, scoreParticle, soupLossForParticle, waveClearBonus, wrongToolPenalty
@@ -15,7 +16,7 @@ import {
 import { createWaveRng, createWaveState, isFadingIn, nextWaveDecision, waveComposition, waveSpawnPositions } from './waves.js';
 
 const {
-  ACHIEVEMENTS, ACHIEVEMENTS_KEY, BEST_SCORE_KEY, BIG_PARTICLE_RADIUS, BOIL_CYCLE_MS, BOIL_DURATION_MS,
+  ACHIEVEMENTS, ACHIEVEMENTS_KEY, BEST_SCORE_KEY, BIG_PARTICLE_RADIUS,
   BROTHS, CHILL_COST_MS, CHILL_EFFECT_MS, CHILL_PRACTICE_COOLDOWN_MS, FRAME_SCALE_MAX,
   PARTICLE_RENDER_TYPES, POT_SKINS, PRACTICE_STAGE, PREVIOUS_RESULTS_KEY, RULES,
   SETTINGS_KEY, SPOON_STREAK_MAX, SPOON_STREAK_WINDOW_MS, STAGE_RECORDS_KEY,
@@ -119,6 +120,7 @@ let spoonStreak = 0;
 let lastSpoonUse = null;
 let lives = CONFIG.PERFECT_LIVES;
 let successfulScoops = 0;
+let scoopAttempts = 0;
 let playedMs = 0;
 let lastPlayTime = null;
 let selectedSkin = 'steel';
@@ -306,6 +308,9 @@ function recordPlayedTime(now = performance.now()) {
 }
 
 function resize() {
+  const oldGeom = canvasWidth && canvasHeight ? {
+    width: canvasWidth, height: canvasHeight, potRadius: currentPotRadius()
+  } : null;
   const rect = canvas.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
   pixelRatio = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -314,6 +319,12 @@ function resize() {
   canvas.width = Math.round(canvasWidth * pixelRatio);
   canvas.height = Math.round(canvasHeight * pixelRatio);
   ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  if (oldGeom && particles.length) {
+    particles = rescaleParticles(particles, oldGeom, {
+      width: canvasWidth, height: canvasHeight, potRadius: currentPotRadius()
+    });
+    refreshParticleGroups();
+  }
 }
 
 function randomPosition(margin = 10) {
@@ -542,6 +553,7 @@ function updateCounts() {
 
 function tryScoop() {
   if (!running) return;
+  scoopAttempts++;
   const tool = TOOL_CONFIG[currentTool];
   const now = performance.now();
   const chilled = isOilChilled(now);
@@ -820,10 +832,7 @@ function getScoopableIngredientUnits() {
 }
 
 function currentBoilState() {
-  const broth = BROTHS[brothId];
-  const cycle = BOIL_CYCLE_MS / broth.boilFactor;
-  const activeDuration = Math.min(cycle * .55, BOIL_DURATION_MS * broth.boilFactor);
-  return (simulationTimeMs % cycle) < activeDuration;
+  return boilStateAt(simulationTimeMs, BROTHS[brothId]);
 }
 
 function updateEventDisplay() {
@@ -946,6 +955,7 @@ function startGame(mode = 'challenge', daily = false) {
   spoonStreak = 0;
   lastSpoonUse = null;
   successfulScoops = 0;
+  scoopAttempts = 0;
   playedMs = 0;
   lives = CONFIG.PERFECT_LIVES;
   lastPlayTime = null;
@@ -1254,7 +1264,12 @@ function installTestHook() {
     challengeRule: () => challengeRule,
     gameMode: () => gameMode,
     successfulScoops: () => successfulScoops,
+    scoopAttempts: () => scoopAttempts,
     playedMs: () => playedMs,
+    remainingMs: () => remainingMs,
+    canvasWidth: () => canvasWidth,
+    canvasHeight: () => canvasHeight,
+    potRadius: () => currentPotRadius(),
     lives: () => lives,
     waves: () => wavesSpawned,
     maxCombo: () => maxCombo,
@@ -1341,6 +1356,8 @@ canvas.addEventListener('pointermove', event => {
 window.addEventListener('keydown', event => {
   if (document.getElementById('game').classList.contains('hidden')) return;
   const key = event.key.toLowerCase();
+  const canvasKey = document.activeElement === canvas;
+  if ((key === ' ' || key === 'enter' || key.startsWith('arrow')) && !canvasKey) return;
   if (key === 'p') {
     event.preventDefault();
     running ? pauseGame() : resumeGame();
@@ -1387,6 +1404,11 @@ window.addEventListener('resize', () => {
   drawParticles(performance.now(), simulationTimeMs);
   drawTool();
 });
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') pauseGame();
+});
+window.addEventListener('pagehide', pauseGame);
 
 updateMenuDescriptions();
 showScreen('menu');
