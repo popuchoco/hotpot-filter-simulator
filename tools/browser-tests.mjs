@@ -70,6 +70,65 @@ try {
     }
   }
 
+  for (const viewport of [
+    { width: 1920, height: 1080 },
+    { width: 1280, height: 800 },
+    { width: 1366, height: 768 },
+    { width: 390, height: 844 },
+    { width: 844, height: 390 }
+  ]) {
+    const page = await createGamePage(viewport);
+    try {
+      const measurements = await page.evaluate(() => {
+        const timer = document.querySelector('#timeDisplay').getBoundingClientRect();
+        const canvas = document.querySelector('#canvas');
+        const canvasRect = canvas.getBoundingClientRect();
+        const { canvasWidth, canvasHeight, potRadius } = window.__hotpot.state;
+        const scaleX = canvasRect.width / canvasWidth;
+        const scaleY = canvasRect.height / canvasHeight;
+        const pot = {
+          left: canvasRect.left + (canvasWidth / 2 - potRadius) * scaleX,
+          right: canvasRect.left + (canvasWidth / 2 + potRadius) * scaleX,
+          top: canvasRect.top + (canvasHeight / 2 - potRadius) * scaleY,
+          bottom: canvasRect.top + (canvasHeight / 2 + potRadius) * scaleY
+        };
+        const tools = [...document.querySelectorAll('.tool')].map(button => {
+          const rect = button.getBoundingClientRect();
+          return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+        });
+        return {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          timer: { top: timer.top, bottom: timer.bottom },
+          pot,
+          tools,
+          scrollTop: document.scrollingElement.scrollTop
+        };
+      });
+
+      assert.ok(measurements.timer.top >= 0 && measurements.timer.bottom <= measurements.innerHeight,
+        `timer fits in ${viewport.width}x${viewport.height}: ${JSON.stringify(measurements.timer)}`);
+      assert.ok(measurements.pot.left >= 0 && measurements.pot.right <= measurements.innerWidth
+        && measurements.pot.top >= 0 && measurements.pot.bottom <= measurements.innerHeight,
+      `pot fits in ${viewport.width}x${viewport.height}: ${JSON.stringify(measurements.pot)}`);
+      assert.equal(measurements.tools.length, 3, 'all three tool buttons are present');
+      for (const [index, tool] of measurements.tools.entries()) {
+        assert.ok(tool.left >= 0 && tool.right <= measurements.innerWidth
+          && tool.top >= 0 && tool.bottom <= measurements.innerHeight,
+        `tool ${index + 1} fits in ${viewport.width}x${viewport.height}: ${JSON.stringify(tool)}`);
+      }
+      assert.equal(measurements.scrollTop, 0, `page is at scroll top in ${viewport.width}x${viewport.height}`);
+      console.log(
+        `layout ${viewport.width}x${viewport.height} timerTop=${measurements.timer.top.toFixed(1)} `
+        + `potTop=${measurements.pot.top.toFixed(1)} potBottom=${measurements.pot.bottom.toFixed(1)} `
+        + `toolsBottom=${Math.max(...measurements.tools.map(tool => tool.bottom)).toFixed(1)} `
+        + `innerHeight=${measurements.innerHeight}`
+      );
+    } finally {
+      await page.close();
+    }
+  }
+
   {
     const page = await createGamePage({ width: 1920, height: 1080 });
     try {

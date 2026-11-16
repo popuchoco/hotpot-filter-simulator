@@ -28,6 +28,65 @@ body {
 #app { width: min(100%, 580px); margin: auto; padding: 8px 4px; }
 .screen { text-align: center; }
 .hidden { display: none !important; }
+html:has(#game:not(.hidden)),
+body:has(#game:not(.hidden)) { height: 100%; min-height: 100%; }
+body:has(#game:not(.hidden)) {
+  min-height: 100dvh;
+  padding: 0;
+  display: block;
+  overflow: hidden;
+}
+#app:has(#game:not(.hidden)) {
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+#game {
+  display: grid;
+  grid-template-rows: auto min-content auto minmax(0, 1fr) auto;
+  grid-template-areas: "timer" "event" "hud" "canvas" "actions";
+  gap: 0;
+  width: min(100%, 900px);
+  height: 100dvh;
+  min-height: 0;
+  margin: 0 auto;
+  padding: max(5px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(5px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  overflow: hidden;
+}
+#game > .timer-bar { grid-area: timer; margin: 0 0 3px; }
+#game > .event-banner { grid-area: event; min-height: 1em; margin: 0 0 2px; line-height: 1.15; }
+#game > .hud { grid-area: hud; margin: 0 0 3px; }
+.canvas-stage { grid-area: canvas; display: grid; place-items: center; min-width: 0; min-height: 0; }
+#game > .game-actions {
+  grid-area: actions;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: end;
+  gap: 0;
+  width: min(100%, 680px);
+  margin: 0 auto;
+}
+#game .tools { width: 100%; margin: 3px 0 5px; }
+#game .tool-key-hint { margin: 0 0 3px; }
+#game .tool-tip { margin: 0 0 3px; }
+#game .method-row { margin: 0 0 3px; }
+#game .controls { margin: 0; }
+#game .hint { max-height: 2.4em; overflow: hidden; margin: 3px 0 0; font-size: .76rem; line-height: 1.2; }
+.canvas-stage #canvas {
+  display: block;
+  width: min(100%, 510px);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0;
+  background: radial-gradient(circle, #b9874e, #211a16 73%);
+  border-radius: 50%;
+  cursor: crosshair;
+  touch-action: none;
+}
 h1, h2, p { margin-top: 0; }
 h1 { font-family: 'Baloo 2', 'Noto Sans TC', sans-serif; font-size: clamp(1.7rem, 7vw, 2.2rem); color: #ffd18b; text-shadow: 0 3px 14px rgba(0,0,0,.55); margin-bottom: 3px; }
 h2 { font-size: 1.42rem; color: #ffd18b; margin-bottom: 12px; }
@@ -131,18 +190,6 @@ button:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 3px; }
 .hud > div { min-width: 0; padding: 6px 4px; border-radius: 9px; background: rgba(38,27,22,.78); color: #ddcbb2; font-size: clamp(.7rem, 2.5vw, .82rem); white-space: nowrap; }
 .hud strong { color: #fff4de; margin-left: 2px; font-variant-numeric: tabular-nums; }
 .score-chip strong { color: #ffd17c; }
-#canvas {
-  display: block;
-  width: min(100%, 510px, 58svh);
-  height: auto;
-  aspect-ratio: 1 / 1;
-  max-height: 510px;
-  margin: 0 auto 4px;
-  background: radial-gradient(circle, #b9874e, #211a16 73%);
-  border-radius: 50%;
-  cursor: crosshair;
-  touch-action: none;
-}
 .tools { display: flex; gap: 7px; margin: 5px 0 8px; justify-content: center; }
 .tool { flex: 1; padding: 8px 4px; font-size: clamp(.69rem, 2.8vw, .82rem); border-radius: 10px; background: linear-gradient(180deg, #514136, #312720); box-shadow: 0 3px 0 #1c1511; }
 .tool.active { color: #2a1d13; background: linear-gradient(180deg, #ffdb9d, #d99a52); box-shadow: 0 3px 0 #8b5729; }
@@ -180,7 +227,6 @@ button:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 3px; }
 @media (max-height: 720px) {
   body { align-items: flex-start; }
   #app { padding-top: 2px; padding-bottom: 2px; }
-  #canvas { width: min(100%, 430px, 51svh); height: auto; }
   .timer-bar { padding-top: 5px; padding-bottom: 6px; }
 }
 @media (max-width: 440px) {
@@ -195,8 +241,44 @@ button:focus-visible { outline: 3px solid #ffe4a9; outline-offset: 3px; }
 }
 @media (min-width: 700px) and (min-height: 700px) {
   #app { width: min(100%, 700px); }
-  #canvas { width: min(100%, 620px, 68svh); height: auto; }
   .menu-pot { width: min(52vw, 390px); height: min(30vw, 215px); }
+}
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 600px) {
+  #game {
+    grid-template-columns: minmax(0, 1fr) minmax(190px, 25vw);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: "timer actions" "hud actions" "canvas actions";
+    column-gap: 10px;
+    width: 100%;
+    padding: max(4px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+  }
+  #game > .event-banner { position: absolute; }
+  #game > .hud { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #game > .game-actions {
+    align-content: center;
+    justify-items: stretch;
+    gap: 5px;
+    width: 100%;
+    min-width: 0;
+  }
+  #game .tools { flex-direction: column; gap: 5px; margin: 0; }
+  #game .tool { width: 100%; min-height: 38px; padding: 5px 4px; }
+  #game .tool-key-hint,
+  #game .tool-tip,
+  #game .event-banner,
+  #game .method-row span,
+  #game .hint {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  #game .method-row { min-height: 0; margin: 0; }
+  #game .method-btn { width: 100%; padding: 6px 4px; font-size: .72rem; }
+  #game .controls { gap: 6px; }
+  #game .controls button { flex: 1; min-width: 0; padding: 6px 5px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

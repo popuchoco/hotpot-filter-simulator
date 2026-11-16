@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261027-7">
+<link rel="stylesheet" href="style.css?v=20261117-1">
 </head>
 <body>
 <div id="app">
@@ -147,23 +147,27 @@
       <div class="count-chip">骨頭 <strong id="boneCount">0</strong></div>
       <div class="count-chip">雜料 <strong id="debrisCount">0</strong></div>
     </div>
-    <canvas id="canvas" tabindex="0" role="img" aria-label="一鍋火鍋湯，裡面有肉沫、蔬菜、浮油、骨頭，以及依湯底出現的辣椒片或豆渣。使用方向鍵移動撈勺，按 Enter 撈取；也可直接點擊食材。"></canvas>
-    <div class="tools">
-      <button class="tool" data-tool="spoon" aria-pressed="false">🥄 普通湯匙</button>
-      <button class="tool" data-tool="holey" aria-pressed="false">🕳️ 有洞湯勺</button>
-      <button class="tool" data-tool="strainer" aria-pressed="true">🕸️ 細網撈沫勺</button>
+    <div class="canvas-stage">
+      <canvas id="canvas" tabindex="0" role="img" aria-label="一鍋火鍋湯，裡面有肉沫、蔬菜、浮油、骨頭，以及依湯底出現的辣椒片或豆渣。使用方向鍵移動撈勺，按 Enter 撈取；也可直接點擊食材。"></canvas>
     </div>
-    <div class="tool-key-hint">快捷鍵：<kbd>1</kbd> 普通湯匙 · <kbd>2</kbd> 有洞湯勺 · <kbd>3</kbd> 細網撈沫勺</div>
-    <div class="tool-tip" id="toolTip" aria-live="polite">細網範圍小、帶走湯汁少，適合肉沫與凝固油渣。</div>
-    <div class="method-row">
-      <button id="chillBtn" class="method-btn">❄️ 冷藏凝油（預備）</button>
-      <span id="methodStatus">讓浮油凝固後，再用細網撈取。</span>
+    <div class="game-actions">
+      <div class="tools">
+        <button class="tool" data-tool="spoon" aria-pressed="false">🥄 普通湯匙</button>
+        <button class="tool" data-tool="holey" aria-pressed="false">🕳️ 有洞湯勺</button>
+        <button class="tool" data-tool="strainer" aria-pressed="true">🕸️ 細網撈沫勺</button>
+      </div>
+      <div class="tool-key-hint">快捷鍵：<kbd>1</kbd> 普通湯匙 · <kbd>2</kbd> 有洞湯勺 · <kbd>3</kbd> 細網撈沫勺</div>
+      <div class="tool-tip" id="toolTip" aria-live="polite">細網範圍小、帶走湯汁少，適合肉沫與凝固油渣。</div>
+      <div class="method-row">
+        <button id="chillBtn" class="method-btn">❄️ 冷藏凝油（預備）</button>
+        <span id="methodStatus">讓浮油凝固後，再用細網撈取。</span>
+      </div>
+      <div class="controls">
+        <button id="pauseBtn" aria-pressed="false">暫停</button>
+        <button id="endBtn">結束</button>
+      </div>
+      <div id="hint" class="hint" role="status" aria-live="polite"></div>
     </div>
-    <div class="controls">
-      <button id="pauseBtn" aria-pressed="false">暫停</button>
-      <button id="endBtn">結束</button>
-    </div>
-    <div id="hint" class="hint" role="status" aria-live="polite"></div>
   </div>
 
   <!-- Result -->
@@ -181,6 +185,6 @@
   </div>
 </div>
 
-<script type="module" src="src/game.js?v=20261027-7"></script>
+<script type="module" src="src/game.js?v=20261117-1"></script>
 </body>
 </html>

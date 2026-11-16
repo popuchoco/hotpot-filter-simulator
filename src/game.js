@@ -311,6 +311,11 @@ function resize() {
   const oldGeom = canvasWidth && canvasHeight ? {
     width: canvasWidth, height: canvasHeight, potRadius: currentPotRadius()
   } : null;
+  const stageRect = canvas.parentElement.getBoundingClientRect();
+  const displaySize = Math.floor(Math.min(stageRect.width, stageRect.height, 510));
+  if (!displaySize) return;
+  canvas.style.width = `${displaySize}px`;
+  canvas.style.height = `${displaySize}px`;
   const rect = canvas.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
   pixelRatio = Math.min(window.devicePixelRatio || 1, 2.5);
@@ -1157,6 +1162,7 @@ function endGame(reason = 'timeout') {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(screen => screen.classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
+  if (id === 'game') window.scrollTo(0, 0);
 }
 
 function updateMenuDescriptions() {
