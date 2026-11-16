@@ -7,7 +7,8 @@ import {
   achievementConditions, allFoodCorrectlyRemoved, applySoupLoss, boilStateAt, categoryCleanliness, getHitParticles,
   clearRuleDurationMs, comboMultiplier, getScoopTargets, isEligibleDailyChallenge, isGoodToolFor,
   loseLife, missionSuccess, nextCombo, noLivesRemaining, overallCleanliness,
-  resultComment as gradeResultComment, scoopDecision, scoreParticle, soupLossForParticle, waveClearBonus, wrongToolPenalty
+  parseFriendScore, resultComment as gradeResultComment, scoopDecision, scoreParticle, soupLossForParticle,
+  waveClearBonus, wrongToolPenalty
 } from './rules.js';
 import { dailyChallengeDescriptor as parseDailyChallengeDescriptor, dailyDateTaipei, formatSeed, hashSeed, mulberry32 } from './rng.js';
 import {
@@ -34,6 +35,7 @@ const resultStats = document.getElementById('resultStats');
 const cleanlinessEl = document.getElementById('cleanliness');
 const personalBestEl = document.getElementById('personalBest');
 const bestScoreMenuEl = document.getElementById('bestScoreMenu');
+const friendScoreMenuEl = document.getElementById('friendScoreMenu');
 const meatCountEl = document.getElementById('meatCount');
 const vegCountEl = document.getElementById('vegCount');
 const oilCountEl = document.getElementById('oilCount');
@@ -323,6 +325,12 @@ function updateStageRecordDisplay() {
   const stageId = stageSelect.value in STAGES ? stageSelect.value : 'home';
   const record = Number(stageRecords[stageId]) || 0;
   setText(bestScoreMenuEl, record);
+}
+
+function updateFriendScoreDisplay() {
+  const friendScore = parseFriendScore(new URLSearchParams(window.location.search).get('score'));
+  setClass(friendScoreMenuEl, 'hidden', friendScore === null);
+  if (friendScore !== null) setText(friendScoreMenuEl, `朋友分數 ${friendScore}`);
 }
 
 function formatDailyDate(value) {
@@ -626,6 +634,16 @@ function tryScoop() {
   const remove = new Set();
   let successfulActions = 0;
   const failuresBeforeScoop = scooped.fail;
+  const hintFragments = [];
+  const addScoopHint = (message, priority) => hintFragments.push({ message, priority, order: hintFragments.length });
+  const showScoopHints = () => {
+    if (!hintFragments.length) return;
+    const message = hintFragments
+      .sort((a, b) => a.priority - b.priority || a.order - b.order)
+      .map(fragment => fragment.message)
+      .join('；');
+    showHint(message);
+  };
   const suitableParticles = new Set(suitable);
   let crackedBone = false;
   if (primaryFailed) {
@@ -649,7 +667,7 @@ function tryScoop() {
       if (!decision.remove) {
         p.integrity--;
         crackedBone = true;
-        showHint('骨頭較大，要用有洞湯勺再撈一次！');
+        addScoopHint('骨頭較大，要用有洞湯勺再撈一次！', 4);
       } else {
         scooped[p.type]++;
         remove.add(indices[i]);
@@ -678,21 +696,21 @@ function tryScoop() {
 
   playSound(primaryFailed ? 'fail' : crackedBone ? 'boneCrack' : 'scoop');
   if (primaryFailed) {
-    showHint(`主要目標不適合這個工具，失去一命（剩 ${lives} 命）。`);
+    addScoopHint(`主要目標不適合這個工具，失去一命（剩 ${lives} 命）。`, 0);
   } else if (gained > lost) {
     const bigBonus = caught.some(p => p.r > BIG_PARTICLE_RADIUS && isGoodToolFor(p, currentTool, isOilChilled(now)));
     const coldBonus = caught.some(p => p.type === 'oil' && isOilChilled(now) && isGoodToolFor(p, currentTool, isOilChilled(now)));
     const actionPoints = Math.round(gained * comboBonus) - lost;
     const comboText = challengeRule === 'score' && combo > 0 ? `｜連擊 ${combo} ×${comboBonus.toFixed(2)}` : '';
-    showHint(coldBonus ? `凝固油花撈起！細網很合適 +${actionPoints}${comboText}` : bigBonus ? `大塊撈起！${tool.name} +${actionPoints}${comboText}` : `撈取成功 +${actionPoints}${comboText}`);
+    addScoopHint(coldBonus ? `凝固油花撈起！細網很合適 +${actionPoints}${comboText}` : bigBonus ? `大塊撈起！${tool.name} +${actionPoints}${comboText}` : `撈取成功 +${actionPoints}${comboText}`, combo > 0 ? 2 : 3);
   } else {
-    showHint(`工具不合適，漏掉了… -${lost - gained}`);
+    addScoopHint(`工具不合適，漏掉了… -${lost - gained}`, 3);
   }
-  if (currentTool === 'spoon' && spoonStreak >= 2) showHint(`湯匙連續使用，帶走湯汁增加 ${Math.round(spoonStreak * 25)}%`);
+  if (currentTool === 'spoon' && spoonStreak >= 2) addScoopHint(`湯匙連續使用，帶走湯汁增加 ${Math.round(spoonStreak * 25)}%`, 5);
   if (scooped.fail === failuresBeforeScoop && successfulActions > 0) {
     correctActionStreak++;
     if (correctActionStreak >= 5) unlockAchievement('steady');
-    else if (correctActionStreak >= 3) showHint(`連續正確撈取 ${correctActionStreak}/5，再穩穩撈兩次！`);
+    else if (correctActionStreak >= 3) addScoopHint(`連續正確撈取 ${correctActionStreak}/5，再穩穩撈兩次！`, 6);
   } else if (scooped.fail > failuresBeforeScoop) {
     correctActionStreak = 0;
   }
@@ -703,19 +721,22 @@ function tryScoop() {
     waveClears++;
     score += bonus;
     setText(scoreEl, score);
-    if (bonus > 0) showHint(`清波獎勵 +${bonus} 分！`);
+    if (bonus > 0) addScoopHint(`清波獎勵 +${bonus} 分！`, 1);
     scheduleWave();
   }
   potHadNoScoopableUnits = getScoopableIngredientUnits() === 0;
   if (challengeRule === 'perfect' && noLivesRemaining(lives)) {
+    showScoopHints();
     endGame('lives');
     return;
   }
   if (challengeRule === 'clear' && allFoodCorrectlyRemoved(particles, initialMass, removedMass)) {
+    showScoopHints();
     endGame('cleared');
     return;
   }
-  if (successfulActions === 0 && lost === 0 && !caught.length) showHint('這次沒有撈中，靠近食材再試試。');
+  if (successfulActions === 0 && lost === 0 && !caught.length) addScoopHint('這次沒有撈中，靠近食材再試試。', 7);
+  showScoopHints();
 }
 
 function updateToolTip() {
@@ -1244,6 +1265,7 @@ function updateMenuDescriptions() {
     ? '推薦：想放慢節奏可先練習；熟悉工具後，再挑戰熱鬧滿鍋或更嚴格規則。'
     : '初次遊玩建議先選「新手小鍋」或「練習辨認」；關卡不鎖定，可自由嘗試。');
   updateStageRecordDisplay();
+  updateFriendScoreDisplay();
   const daily = dailyChallengeDescriptor();
   const dailyBroth = BROTHS[['clear', 'mala', 'miso'][daily.seed % 3]];
   setText(document.getElementById('dailyBtn'), daily.shared

@@ -5,12 +5,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#2a140e">
-<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="description" content="挑戰多種火鍋湯底、規則和工具，撈起肉沫、蔬菜、浮油與骨頭；也可挑戰每日固定盤面。">
 <title>火鍋湯底過濾挑戰</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css?v=20261117-1">
 </head>
 <body>
@@ -63,6 +62,7 @@
     </details>
     <button id="howToBtn" class="secondary">玩法與火鍋小知識</button>
     <p class="best-record">所選關卡本機最高分 <strong id="bestScoreMenu">0</strong></p>
+    <p id="friendScoreMenu" class="best-record hidden"></p>
     <button id="resetRecordsBtn" class="secondary">清除本機紀錄</button>
     <p class="credit">大骨湯油水 · 肉沫 · 蔬菜塊 · 可部署 GitHub Pages</p>
   </div>

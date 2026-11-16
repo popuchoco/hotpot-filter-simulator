@@ -20,6 +20,8 @@
 - **每日成就**：使用當日正確固定種子並成功撈取至少 8 次，才可解鎖「每日鍋友」；帶其他種子的分享盤仍可重玩，但不計成就。
 - **結算回顧**：限時衝分會顯示波次數、最高連擊和清波次數。清潔度只平均本局實際出現的食材類別，以質量／面積記錄清除率；不存在的類別會顯示「本關無…」，若沒有任何清除目標則顯示 100%（無清除目標）。並顯示失誤率、剩餘食材、估算湯汁損失、關卡高分差距和與上次湯汁損失比較。
 - **分數比較**：分波加入了連擊倍率和清波獎勵，更新後的分數不可與分波前的舊基線直接比較。
+- **分享朋友分數**：每日挑戰分享網址會附上 `score`；開啟連結時，選單只顯示經過 0–99999 整數驗證的「朋友分數 N」。它不會加入遊戲分數、本機紀錄或個人最高分。
+- **自帶字型與安裝捷徑**：Noto Sans TC 和 Baloo 2 使用 repo 內的 WOFF2 子集，授權與修改資訊列在 [CREDITS.md](CREDITS.md)。`manifest.webmanifest` 提供獨立視窗模式和自繪火鍋 SVG 圖示；目前沒有 Service Worker。
 - **本機紀錄與解鎖**：各關最高分分開保存，可清除紀錄；完成指定條件會解鎖成就和鍋具外觀。資料都留在瀏覽器本機。
 - **成就與結算**：「第一次開鍋」需成功撈取 5 次或遊玩滿 15 秒；無失誤挑戰只有時間到且零失誤才算完成，手動結束會標示「已中止」。限時衝分評語會同時參考分數與工具正確率。
 - **即時回饋**：骨頭顯示還需要成功撈取幾次；連續正確撈取 5 次可在遊戲中即時解鎖成就，沸騰和骨頭裂開也有額外提示音。
@@ -42,6 +44,7 @@
 - `src/game.js`：選單、遊戲狀態、輸入、DOM 更新、結果與本機資料；使用原生 ES modules 載入。
 - `tests/`：以 Vitest 執行的純函式單元測試。
 - `tools/`：本機靜態伺服器、Playwright 瀏覽器檢查和 bot 評估工具。
+- `tools/bump-version.mjs`：把 `index.html` 與 `src/*.js` 中的 `?v=` 統一成同一個快取版本。
 
 ## npm 指令、測試與評估
 
@@ -60,6 +63,18 @@ npm run eval:full    # 執行 cfgA–cfgG，每種設定三局
 `npm test` 在 Node.js 執行不需要瀏覽器的規則、幾何和波次測試。`test:browser` 與 `smoke` 使用 Playwright 和本機 Chrome，檢查實際 DOM、輸入與不同視窗尺寸；DOM 頻率測試會列出工具提示和方法列的 MutationObserver 每秒次數。
 
 `eval:quick` 和 `eval:full` 以 Playwright 假時鐘執行遊戲，再讓 `tools/eval/bot.js` 按不同策略和間隔操作。評估結果會輸出 JSON 原始紀錄及 Markdown 摘要，預設放在 `tools/eval/out/`。Playwright 使用 `CHROME_PATH` 指定的 Chrome，或 `/usr/bin/google-chrome`；如本機尚未安裝 Chromium，可執行 `npx playwright-core install chromium`。
+
+## 字型與快取版本
+
+字型由網站同源提供，不會連到 Google Fonts。重新製作子集需依 `tools/fonts/subset.py` 說明準備上游字型；使用條件和授權文字請見 [CREDITS.md](CREDITS.md) 與 `assets/fonts/OFL-*.txt`。
+
+更新前端資產後，可手動統一快取版本：
+
+```bash
+node tools/bump-version.mjs 20261117
+```
+
+省略版本參數時，腳本使用臺北當日日期（`YYYYMMDD`）。它會更新 `index.html` 及任何帶 `?v=` 的 `src/*.js` 匯入網址；此步驟只改原始檔，不是部署建置流程。
 
 ## GitHub Pages 部署
 
@@ -81,4 +96,4 @@ GitHub Pages 仍直接提供原始 HTML、CSS 與 JavaScript 模組，無需建�
 
 ## 授權
 
-本專案依 [Apache License 2.0](LICENSE) 授權。該授權不涵蓋 Google Fonts 等第三方資源；第三方資源各自依其授權條款使用。
+本專案程式依 [Apache License 2.0](LICENSE) 授權。Noto Sans TC 與 Baloo 2 字型依 SIL Open Font License 1.1 使用，詳見 `CREDITS.md` 和各自的授權文字檔。

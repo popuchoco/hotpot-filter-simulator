@@ -72,7 +72,6 @@ async function runOne(task, index) {
   try {
     page = await browser.newPage({ viewport: task.config.vp, deviceScaleFactor: 1 });
     const play = (async () => {
-      await page.route(/fonts\.(googleapis|gstatic)/, route => route.abort());
       await page.clock.install();
       await page.goto(`${server.origin}/index.html?test=1`, { waitUntil: 'load' });
       await page.addScriptTag({ path: resolve(repoRoot, 'tools/eval/bot.js') });

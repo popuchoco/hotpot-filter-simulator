@@ -9,7 +9,6 @@ try {
 
   async function createGamePage(viewport = { width: 1280, height: 800 }) {
     const page = await browser.newPage({ viewport, deviceScaleFactor: 1 });
-    await page.route(/fonts\.(googleapis|gstatic)/, route => route.abort());
     await page.goto(`${server.origin}/?test=1`, { waitUntil: 'load' });
     assert.equal(await page.evaluate(() => Boolean(window.__hotpot)), true, 'test hook is available with ?test=1');
     await page.click('#startBtn');

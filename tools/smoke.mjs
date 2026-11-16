@@ -8,17 +8,25 @@ const viewports = [
 ];
 const server = await startStaticServer();
 let browser;
+function watchExternalRequests(page) {
+  const externalRequests = [];
+  page.on('request', request => {
+    const requestUrl = new URL(request.url());
+    if (requestUrl.hostname && requestUrl.hostname !== '127.0.0.1') externalRequests.push(request.url());
+  });
+  return externalRequests;
+}
+
 try {
   browser = await launchChromium();
   for (const viewport of viewports) {
     const page = await browser.newPage({ viewport, deviceScaleFactor: 1 });
     const errors = [];
+    const externalRequests = watchExternalRequests(page);
     page.on('pageerror', error => errors.push(`pageerror: ${error.message}`));
     page.on('console', message => {
-      // Google Fonts is aborted offline; its resource failure is whitelisted until S6.
-      if (message.type() === 'error' && !/fonts\.(googleapis|gstatic)/.test(message.location()?.url || '')) errors.push(`console: ${message.text()}`);
+      if (message.type() === 'error') errors.push(`console: ${message.text()}`);
     });
-    await page.route(/fonts\.(googleapis|gstatic)/, route => route.abort());
     try {
       await page.goto(`${server.origin}/?test=1`, { waitUntil: 'load' });
       assert.equal(await page.evaluate(() => Boolean(window.__hotpot)), true, 'test hook is available with ?test=1');
@@ -45,6 +53,7 @@ try {
       await page.click('#endBtn');
       await page.waitForSelector('#result:not(.hidden)');
       assert.equal(await page.evaluate(() => window.__hotpot.state.gameEnded), true, 'end shows the result');
+      assert.deepEqual(externalRequests, [], `external requests at ${viewport.width}x${viewport.height}`);
       assert.deepEqual(errors, [], `browser errors at ${viewport.width}x${viewport.height}`);
       console.log(`smoke ${viewport.width}x${viewport.height}: passed`);
     } finally {
@@ -53,9 +62,10 @@ try {
   }
 
   const normalPage = await browser.newPage();
-  await normalPage.route(/fonts\.(googleapis|gstatic)/, route => route.abort());
+  const externalRequests = watchExternalRequests(normalPage);
   await normalPage.goto(server.origin, { waitUntil: 'load' });
   assert.equal(await normalPage.evaluate(() => '__hotpot' in window), false, 'test hook is hidden without ?test=1');
+  assert.deepEqual(externalRequests, [], 'the menu makes no requests to external hosts');
   await normalPage.close();
 } finally {
   await browser?.close();

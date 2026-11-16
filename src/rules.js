@@ -126,6 +126,15 @@ export function scoreParticle(particle, toolId, { oilChilled = false } = {}) {
   return Math.round(points * tool.scoreMultiplier);
 }
 
+export function parseFriendScore(value) {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 0 && value <= 99_999 ? value : null;
+  }
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
+  const score = Number(value);
+  return Number.isInteger(score) && score <= 99_999 ? score : null;
+}
+
 export function wrongToolPenalty(particle) {
   return Math.round(particle.r * WRONG_TOOL_PENALTY_PER_RADIUS + WRONG_TOOL_BASE_PENALTY);
 }

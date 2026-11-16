@@ -1,0 +1,16 @@
+{
+  "name": "火鍋湯底過濾挑戰",
+  "short_name": "火鍋撈渣",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#171411",
+  "theme_color": "#2a140e",
+  "icons": [
+    {
+      "src": "./assets/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
