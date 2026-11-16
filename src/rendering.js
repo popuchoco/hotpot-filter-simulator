@@ -10,6 +10,12 @@ export function renderCacheKey(size, skin, broth, highContrast, devicePixelRatio
   ]);
 }
 
+export function debugHitEnabled(search) {
+  const params = new URLSearchParams(search);
+  // `?debug=hit` (S2, scoop outline) stays supported; `?test=1&debugHit=1` is the S7 test URL.
+  return params.get('debug') === 'hit' || (params.get('test') === '1' && params.get('debugHit') === '1');
+}
+
 export function heatLevelAt(simulationTimeMs, broth, {
   firstBoilDelayMs = FIRST_BOIL_DELAY_MS,
   cycleMs = BOIL_CYCLE_MS,

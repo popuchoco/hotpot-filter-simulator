@@ -3,25 +3,19 @@ import {
   brothId, canvasHeight, canvasWidth, ctx, currentTool, highContrast,
   isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin
 } from './game.js';
-import { BROTHS, POT_RADIUS_RATIO, POT_SKINS, scaledToolShape } from './config.js';
+import { BROTHS, POT_RADIUS_RATIO, POT_SKINS, scaledToolShape, TOOL_SHAPES } from './config.js';
 import { WAVE_FADE_IN_MS } from './balance.js';
+import { drawFoodSprite } from './food-sprites.js';
 import {
-  bubbleCountForHeat, heatLevelAt, renderCacheKey, steamWispCount, visualNoise
+  bubbleCountForHeat, debugHitEnabled, heatLevelAt, renderCacheKey, steamWispCount, visualNoise
 } from './rendering.js';
+const DEBUG_HIT_OVERLAY = debugHitEnabled(window.location.search);
 const POT_GEOMETRY = Object.freeze({
   outerRadiusX: POT_RADIUS_RATIO,
   outerRadiusY: .93,
   basinInset: .925,
   soupRadiusX: .875,
   soupRadiusY: .855
-});
-const RENDER_DETAILS = Object.freeze({
-  tomatoPetalCount: 10
-});
-const VEGETABLE_SHAPES = Object.freeze({
-  pumpkin: Object.freeze({ radiusX: 1.03, radiusY: .8 }),
-  tomato: Object.freeze({ innerRadius: .78, verticalScale: .85 }),
-  default: Object.freeze({ radiusX: .94, radiusY: .78, rotation: .14 })
 });
 const POT_BODY_GRADIENT_OFFSETS = Object.freeze([0, .06, .14, .24, .29, .76, .93, 1]);
 const POT_RIM_STOPS = Object.freeze([[0, '#fff9e9'], [.1, '#59564f'], [.24, '#e4ddcf'], [.42, '#777268'], [.58, '#f8f0df'], [.76, '#625c51'], [1, '#282622']]);
@@ -374,202 +368,48 @@ export function drawSoup(now = 0, simulationTimeMs = now) {
   drawSteam(now, heat, size, cx, cy, soupRx, soupRy);
 }
 
-function drawOil(p, now = performance.now()) {
-  const r = p.r;
-  const chilled = isOilChilled(now);
-  const shimmer = reduceMotion ? 0 : Math.sin(now / 420 + p.shimmer) * .22;
-  ctx.save();
-  ctx.shadowColor = chilled && highContrast ? 'rgba(0,0,0,.98)' : chilled ? 'rgba(136,225,245,.48)' : 'rgba(115,69,27,.2)';
-  ctx.shadowBlur = Math.max(2, r * .28);
-  const oil = ctx.createRadialGradient(p.x - r * .3, p.y - r * .34, r * .06, p.x, p.y, r * 1.08);
-  oil.addColorStop(0, chilled ? 'rgba(255,255,235,.98)' : 'rgba(255,245,197,.93)');
-  oil.addColorStop(.34, chilled ? 'rgba(206,247,249,.92)' : 'rgba(246,210,130,.78)');
-  oil.addColorStop(.78, chilled ? 'rgba(133,208,222,.83)' : 'rgba(229,177,91,.62)');
-  oil.addColorStop(1, chilled ? 'rgba(81,157,177,.65)' : 'rgba(190,133,57,.46)');
-  ctx.fillStyle = oil;
-  ctx.beginPath();
-  ctx.ellipse(p.x, p.y, r * 1.13, r * .9, p.shimmer || 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = chilled && highContrast ? '#00ffff' : chilled ? 'rgba(219,255,255,.95)' : 'rgba(255,248,215,.72)';
-  ctx.lineWidth = chilled && highContrast ? Math.max(2.4, r * .18) : Math.max(1, r * .08);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.ellipse(p.x - r * .15 + shimmer * r, p.y - r * (.27 + shimmer * .18), r * (.4 + shimmer * .12), r * .18, -.22, Math.PI * 1.08, Math.PI * 1.86);
-  ctx.strokeStyle = highContrast ? '#fff' : `rgba(255,255,239,${.55 + Math.abs(shimmer)})`;
-  ctx.lineWidth = Math.max(1, r * .1);
-  ctx.stroke();
-  if (chilled) {
-    ctx.strokeStyle = highContrast ? '#fff36b' : 'rgba(222,255,255,.8)';
-    ctx.lineWidth = highContrast ? Math.max(2, r * .16) : Math.max(1, r * .12);
-    ctx.beginPath();
-    ctx.ellipse(p.x, p.y, r * 1.3, r * 1.08, p.shimmer || 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawMeat(p) {
-  const r = p.r;
-  const meat = ctx.createRadialGradient(p.x - r * .34, p.y - r * .42, .2, p.x, p.y, r * 1.2);
-  meat.addColorStop(0, '#b7775b');
-  meat.addColorStop(.5, p.shade > .5 ? '#88503d' : '#9b5d43');
-  meat.addColorStop(1, '#56352b');
-  ctx.fillStyle = meat;
-  ctx.beginPath();
-  ctx.ellipse(p.x, p.y, r * 1.15, r * .88, p.shade || 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = highContrast ? '#fff' : 'rgba(255,211,169,.34)';
-  ctx.lineWidth = highContrast ? 1.8 : .8;
-  ctx.stroke();
-  ctx.fillStyle = 'rgba(255,226,190,.37)';
-  ctx.beginPath();
-  ctx.arc(p.x - r * .28, p.y - r * .24, Math.max(.7, r * .16), 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawVegetable(p) {
-  const r = p.r;
-  ctx.save();
-  ctx.translate(p.x, p.y);
-  ctx.rotate(p.rotation || 0);
-  ctx.shadowColor = 'rgba(80,43,20,.35)';
-  ctx.shadowBlur = 4;
-  const veg = ctx.createRadialGradient(-r * .32, -r * .4, r * .04, 0, 0, r * 1.25);
-  veg.addColorStop(0, '#fff0c9');
-  veg.addColorStop(.2, p.color);
-  veg.addColorStop(.8, p.color);
-  veg.addColorStop(1, 'rgba(86,50,28,.8)');
-  ctx.fillStyle = veg;
-  ctx.beginPath();
-  if (p.name === '南瓜') {
-    ctx.ellipse(0, 0, r * VEGETABLE_SHAPES.pumpkin.radiusX, r * VEGETABLE_SHAPES.pumpkin.radiusY, 0, 0, Math.PI * 2);
-  } else if (p.name === '番茄') {
-    for (let i = 0; i < RENDER_DETAILS.tomatoPetalCount; i++) {
-      const a = i / RENDER_DETAILS.tomatoPetalCount * Math.PI * 2;
-      const radius = i % 2 ? r * VEGETABLE_SHAPES.tomato.innerRadius : r;
-      const x = Math.cos(a) * radius;
-      const y = Math.sin(a) * radius * VEGETABLE_SHAPES.tomato.verticalScale;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-  } else {
-    const shape = VEGETABLE_SHAPES.default;
-    ctx.ellipse(0, 0, r * shape.radiusX, r * shape.radiusY, shape.rotation, 0, Math.PI * 2);
-  }
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = highContrast ? '#fff' : 'rgba(255,241,210,.58)';
-  ctx.lineWidth = highContrast ? 2 : 1.2;
-  ctx.stroke();
-  if (p.name === '南瓜') {
-    ctx.strokeStyle = 'rgba(117,61,28,.32)';
-    ctx.lineWidth = 1.1;
-    for (const offset of [-.35, 0, .35]) {
-      ctx.beginPath();
-      ctx.ellipse(offset * r, 0, r * .19, r * .72, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-  }
-  ctx.restore();
-}
-
-function drawBone(p) {
-  const r = p.r;
-  ctx.save();
-  ctx.translate(p.x, p.y);
-  ctx.rotate(p.rotation || 0);
-  ctx.shadowColor = 'rgba(55,35,20,.5)';
-  ctx.shadowBlur = 5;
-  ctx.fillStyle = p.integrity > 1 ? '#e8dfc8' : highContrast ? '#fff0a6' : '#cfc3a6';
-  ctx.strokeStyle = highContrast ? '#16110d' : 'rgba(82,59,39,.7)';
-  ctx.lineWidth = highContrast ? 2.5 : 1.2;
-  ctx.beginPath();
-  ctx.roundRect(-r * .58, -r * .2, r * 1.16, r * .4, r * .18);
-  ctx.fill();
-  ctx.stroke();
-  for (const side of [-1, 1]) {
-    ctx.beginPath();
-    ctx.arc(side * r * .55, -r * .16, r * .27, 0, Math.PI * 2);
-    ctx.arc(side * r * .55, r * .16, r * .27, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  }
-  if (p.integrity === 1) {
-    ctx.strokeStyle = highContrast ? '#c90000' : '#744232';
-    ctx.lineWidth = highContrast ? 3 : 2;
-    ctx.beginPath();
-    ctx.moveTo(-r * .12, -r * .2);
-    ctx.lineTo(r * .04, 0);
-    ctx.lineTo(-r * .08, r * .16);
-    ctx.stroke();
-  }
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = p.integrity === 1 ? (highContrast ? '#c90000' : '#744232') : '#4b3928';
-  ctx.beginPath();
-  ctx.arc(r * .62, -r * .62, r * .25, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#fffaf0';
-  ctx.font = `bold ${Math.max(10, r * .3)}px sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(String(p.integrity), r * .62, -r * .62);
-  ctx.restore();
-}
-
-function drawDebris(p) {
-  ctx.save();
-  ctx.translate(p.x, p.y);
-  ctx.rotate(p.rotation || 0);
-  if (p.debrisKind === 'chili') {
-    ctx.fillStyle = highContrast ? '#ff4a22' : '#b9442e';
-    ctx.strokeStyle = highContrast ? '#fff36b' : 'rgba(94,31,22,.85)';
-    ctx.lineWidth = highContrast ? 1.8 : 1;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, p.r * 1.05, p.r * .38, -.1, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#f7d88c';
-    ctx.beginPath();
-    ctx.arc(-p.r * .25, 0, Math.max(1.2, p.r * .12), 0, Math.PI * 2);
-    ctx.arc(p.r * .25, 0, Math.max(1.2, p.r * .12), 0, Math.PI * 2);
-    ctx.fill();
-  } else {
-    ctx.fillStyle = highContrast ? '#fff36b' : '#d3c39a';
-    ctx.strokeStyle = highContrast ? '#111' : 'rgba(86,66,43,.8)';
-    ctx.lineWidth = highContrast ? 1.8 : 1;
-    for (const [x, y, scale] of [[-.32, -.12, .55], [.18, -.28, .45], [.3, .2, .58], [-.2, .25, .42]]) {
-      ctx.beginPath();
-      ctx.arc(x * p.r, y * p.r, Math.max(2, p.r * scale), 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
-  }
-  ctx.restore();
-}
-
 export function drawParticles(now = performance.now(), simulationNowMs = now) {
+  const dpr = ctx.canvas.width / canvasWidth;
   // Oil sits on the surface, meat and vegetables catch the light above it.
-  const drawWithFade = (particle, draw) => {
+  const drawWithFade = particle => {
+    const chilled = particle.type === 'oil' && isOilChilled(now);
+    const draw = () => drawFoodSprite(ctx, particle, highContrast, dpr, chilled);
     if (!Number.isFinite(particle.spawnedAtMs)) {
-      draw(particle);
+      draw();
       return;
     }
     const alpha = Math.max(0, Math.min(1, (simulationNowMs - particle.spawnedAtMs) / WAVE_FADE_IN_MS));
     ctx.save();
     ctx.globalAlpha *= alpha;
-    draw(particle);
+    draw();
     ctx.restore();
   };
-  particleGroups.oil.forEach(p => drawWithFade(p, particle => drawOil(particle, now)));
-  particleGroups.meat.forEach(p => drawWithFade(p, drawMeat));
-  particleGroups.veg.forEach(p => drawWithFade(p, drawVegetable));
-  particleGroups.bone.forEach(p => drawWithFade(p, drawBone));
-  particleGroups.debris.forEach(p => drawWithFade(p, drawDebris));
+  particleGroups.oil.forEach(drawWithFade);
+  particleGroups.meat.forEach(drawWithFade);
+  particleGroups.veg.forEach(drawWithFade);
+  particleGroups.bone.forEach(drawWithFade);
+  particleGroups.debris.forEach(drawWithFade);
+  if (DEBUG_HIT_OVERLAY) drawParticleHitOverlay();
+}
+
+function drawParticleHitOverlay() {
+  ctx.save();
+  ctx.strokeStyle = '#35ffe1';
+  ctx.lineWidth = 1.25;
+  ctx.setLineDash([3, 2]);
+  for (const group of Object.values(particleGroups)) {
+    for (const particle of group) {
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, Math.max(0, particle.r), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
 }
 
 export function drawTool() {
   const potRadius = Math.min(canvasWidth, canvasHeight) * POT_GEOMETRY.outerRadiusX;
+  if (!TOOL_SHAPES[currentTool]) return;
   const shape = scaledToolShape(currentTool, potRadius);
   if (!shape) return;
   ctx.save();
@@ -622,7 +462,7 @@ export function drawTool() {
     ctx.lineTo(0, shape.handleEnd);
     ctx.stroke();
   }
-  if (new URLSearchParams(window.location.search).get('debug') === 'hit') {
+  if (DEBUG_HIT_OVERLAY) {
     ctx.shadowBlur = 0;
     ctx.strokeStyle = '#4fffe4';
     ctx.lineWidth = shape.lineWidth;
