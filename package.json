@@ -1,0 +1,23 @@
+{
+  "name": "hotpot-filter-simulator",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "serve": "node tools/serve.mjs",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "smoke": "node tools/smoke.mjs",
+    "test:browser": "node tools/browser-tests.mjs",
+    "eval:quick": "node tools/eval/run.mjs --config quick --runs 1",
+    "eval:full": "node tools/eval/run.mjs --config full --runs 3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.14.0",
+    "playwright-core": "^1.65.1",
+    "vitest": "^5.1.0"
+  }
+}

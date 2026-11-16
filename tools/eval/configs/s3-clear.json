@@ -1,0 +1,200 @@
+[
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "starter",
+  "rule": "clear",
+  "broth": "clear",
+  "strategy": "smart",
+  "interval": 1000
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "starter",
+  "rule": "clear",
+  "broth": "clear",
+  "strategy": "naive",
+  "interval": 600
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "starter",
+  "rule": "clear",
+  "broth": "mala",
+  "strategy": "smart",
+  "interval": 1000
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "starter",
+  "rule": "clear",
+  "broth": "mala",
+  "strategy": "naive",
+  "interval": 600
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "starter",
+  "rule": "clear",
+  "broth": "miso",
+  "strategy": "smart",
+  "interval": 1000
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "starter",
+  "rule": "clear",
+  "broth": "miso",
+  "strategy": "naive",
+  "interval": 600
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "home",
+  "rule": "clear",
+  "broth": "clear",
+  "strategy": "smart",
+  "interval": 1000
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "home",
+  "rule": "clear",
+  "broth": "clear",
+  "strategy": "naive",
+  "interval": 600
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "home",
+  "rule": "clear",
+  "broth": "mala",
+  "strategy": "smart",
+  "interval": 1000
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "home",
+  "rule": "clear",
+  "broth": "mala",
+  "strategy": "naive",
+  "interval": 600
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "home",
+  "rule": "clear",
+  "broth": "miso",
+  "strategy": "smart",
+  "interval": 1000
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "home",
+  "rule": "clear",
+  "broth": "miso",
+  "strategy": "naive",
+  "interval": 600
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "feast",
+  "rule": "clear",
+  "broth": "clear",
+  "strategy": "smart",
+  "interval": 1000
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "feast",
+  "rule": "clear",
+  "broth": "clear",
+  "strategy": "naive",
+  "interval": 600
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "feast",
+  "rule": "clear",
+  "broth": "mala",
+  "strategy": "smart",
+  "interval": 1000
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "feast",
+  "rule": "clear",
+  "broth": "mala",
+  "strategy": "naive",
+  "interval": 600
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "feast",
+  "rule": "clear",
+  "broth": "miso",
+  "strategy": "smart",
+  "interval": 1000
+ },
+ {
+  "vp": {
+   "width": 1920,
+   "height": 1080
+  },
+  "stage": "feast",
+  "rule": "clear",
+  "broth": "miso",
+  "strategy": "naive",
+  "interval": 600
+ }
+]

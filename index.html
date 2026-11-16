@@ -5,13 +5,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#2a140e">
-<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="description" content="挑戰多種火鍋湯底、規則和工具，撈起肉沫、蔬菜、浮油與骨頭；也可挑戰每日固定盤面。">
 <title>火鍋湯底過濾挑戰</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261027-7">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css?v=20261117-1">
 </head>
 <body>
 <div id="app">
@@ -30,11 +29,11 @@
       <p id="stageDescription" class="stage-description">標準份量，熟悉三種食材與工具搭配。</p>
       <label for="ruleSelect">挑戰規則</label>
       <select id="ruleSelect">
-        <option value="score">限時衝分｜時間內盡量撈取</option>
-        <option value="clear">全清挑戰｜清空整鍋才算成功</option>
+        <option value="score">限時衝分｜分波補料，連擊加分</option>
+        <option value="clear">全清挑戰｜限時清空（75／60／55 秒）</option>
         <option value="perfect">無失誤挑戰｜工具失誤即結束</option>
       </select>
-      <p id="ruleDescription" class="stage-description">時間內盡量撈取，挑戰更高分數。</p>
+      <p id="ruleDescription" class="stage-description">限時衝分會分波補料，成功連擊可提高得分。</p>
       <label for="brothSelect">湯底與事件</label>
       <select id="brothSelect">
         <option value="clear">清湯｜油花清楚、湯流平穩</option>
@@ -52,6 +51,7 @@
       <label><input type="checkbox" id="contrastToggle"> 高對比</label>
       <label><input type="checkbox" id="motionToggle"> 減少動態效果</label>
       <label><input type="checkbox" id="soundToggle"> 音效</label>
+      <label><input type="checkbox" id="practiceWavesToggle"> 練習模式分波補料</label>
       <p>鍵盤：1–3 選工具、方向鍵／WASD 移動撈勺、Enter／空白鍵撈取、P 暫停。</p>
     </section>
     <details class="achievement-panel">
@@ -62,6 +62,7 @@
     </details>
     <button id="howToBtn" class="secondary">玩法與火鍋小知識</button>
     <p class="best-record">所選關卡本機最高分 <strong id="bestScoreMenu">0</strong></p>
+    <p id="friendScoreMenu" class="best-record hidden"></p>
     <button id="resetRecordsBtn" class="secondary">清除本機紀錄</button>
     <p class="credit">大骨湯油水 · 肉沫 · 蔬菜塊 · 可部署 GitHub Pages</p>
   </div>
@@ -78,6 +79,7 @@
       <li><strong>冷藏凝油</strong>：挑戰中可花 3 秒模擬預先冷卻，讓浮油短暫凝固；凝固後用細網精準撈取。</li>
       <li>用錯工具會漏掉並扣分；冷藏後只能用細網撈油，其他工具會暫時鎖定。</li>
       <li>挑戰規則可選限時衝分、全清挑戰或無失誤挑戰；另有三種份量關卡。</li>
+      <li>限時衝分與每日挑戰會分波補料；快速連續正確撈取可累積連擊，在下一波前清空鍋中食材還有清波獎勵。全清時限為新手 75 秒、家常 60 秒、熱鬧 55 秒。</li>
       <li>清湯、麻辣、味噌的湯色、湯流速度和油花聚集速度不同；沸騰湯流會定時出現。</li>
       <li>骨頭體積較大，需要用有洞湯勺撈兩次；連續使用普通湯匙會增加湯汁損失。</li>
       <li>每日挑戰在同一天使用固定盤面與湯底，結算可複製分享連結；當日盤面（含當日分享連結）可解鎖每日成就，舊日期盤面不計。</li>
@@ -145,23 +147,27 @@
       <div class="count-chip">骨頭 <strong id="boneCount">0</strong></div>
       <div class="count-chip">雜料 <strong id="debrisCount">0</strong></div>
     </div>
-    <canvas id="canvas" tabindex="0" role="img" aria-label="一鍋火鍋湯，裡面有肉沫、蔬菜、浮油、骨頭，以及依湯底出現的辣椒片或豆渣。使用方向鍵移動撈勺，按 Enter 撈取；也可直接點擊食材。"></canvas>
-    <div class="tools">
-      <button class="tool" data-tool="spoon" aria-pressed="false">🥄 普通湯匙</button>
-      <button class="tool" data-tool="holey" aria-pressed="false">🕳️ 有洞湯勺</button>
-      <button class="tool" data-tool="strainer" aria-pressed="true">🕸️ 細網撈沫勺</button>
+    <div class="canvas-stage">
+      <canvas id="canvas" tabindex="0" role="img" aria-label="一鍋火鍋湯，裡面有肉沫、蔬菜、浮油、骨頭，以及依湯底出現的辣椒片或豆渣。使用方向鍵移動撈勺，按 Enter 撈取；也可直接點擊食材。"></canvas>
     </div>
-    <div class="tool-key-hint">快捷鍵：<kbd>1</kbd> 普通湯匙 · <kbd>2</kbd> 有洞湯勺 · <kbd>3</kbd> 細網撈沫勺</div>
-    <div class="tool-tip" id="toolTip" aria-live="polite">細網範圍小、帶走湯汁少，適合肉沫與凝固油渣。</div>
-    <div class="method-row">
-      <button id="chillBtn" class="method-btn">❄️ 冷藏凝油（預備）</button>
-      <span id="methodStatus">讓浮油凝固後，再用細網撈取。</span>
+    <div class="game-actions">
+      <div class="tools">
+        <button class="tool" data-tool="spoon" aria-pressed="false">🥄 普通湯匙</button>
+        <button class="tool" data-tool="holey" aria-pressed="false">🕳️ 有洞湯勺</button>
+        <button class="tool" data-tool="strainer" aria-pressed="true">🕸️ 細網撈沫勺</button>
+      </div>
+      <div class="tool-key-hint">快捷鍵：<kbd>1</kbd> 普通湯匙 · <kbd>2</kbd> 有洞湯勺 · <kbd>3</kbd> 細網撈沫勺</div>
+      <div class="tool-tip" id="toolTip" aria-live="polite">範圍較小、瞄準較精準，帶走湯汁少；適合肉沫和凝固油渣。</div>
+      <div class="method-row">
+        <button id="chillBtn" class="method-btn">❄️ 冷藏凝油（預備）</button>
+        <span id="methodStatus">讓浮油凝固後，再用細網撈取。</span>
+      </div>
+      <div class="controls">
+        <button id="pauseBtn" aria-pressed="false">暫停</button>
+        <button id="endBtn">結束</button>
+      </div>
+      <div id="hint" class="hint" role="status" aria-live="polite"></div>
     </div>
-    <div class="controls">
-      <button id="pauseBtn" aria-pressed="false">暫停</button>
-      <button id="endBtn">結束</button>
-    </div>
-    <div id="hint" class="hint" role="status" aria-live="polite"></div>
   </div>
 
   <!-- Result -->
@@ -179,9 +185,6 @@
   </div>
 </div>
 
-<!-- These classic scripts share game state; keep renderer and physics before game.js. -->
-<script src="renderer.js?v=20261027-7"></script>
-<script src="physics.js?v=20261027-7"></script>
-<script src="game.js?v=20261027-7"></script>
+<script type="module" src="src/game.js?v=20261117-1"></script>
 </body>
 </html>
