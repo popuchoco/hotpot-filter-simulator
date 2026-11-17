@@ -362,7 +362,7 @@ function resize() {
     width: canvasWidth, height: canvasHeight, potRadius: currentPotRadius()
   } : null;
   const stageRect = canvas.parentElement.getBoundingClientRect();
-  const displaySize = Math.floor(Math.min(stageRect.width, stageRect.height, 510));
+  const displaySize = Math.floor(Math.min(stageRect.width, stageRect.height, CONFIG.CANVAS_MAX_DISPLAY_SIZE));
   if (!displaySize) return;
   canvas.style.width = `${displaySize}px`;
   canvas.style.height = `${displaySize}px`;
