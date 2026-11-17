@@ -7,7 +7,7 @@ import {
   achievementConditions, allFoodCorrectlyRemoved, applySoupLoss, boilStateAt, categoryCleanliness, getHitParticles,
   clearRuleDurationMs, comboMultiplier, getScoopTargets, isEligibleDailyChallenge, isGoodToolFor,
   loseLife, missionSuccess, nextCombo, noLivesRemaining, overallCleanliness,
-  parseFriendScore, resultComment as gradeResultComment, scoopDecision, scoreParticle, soupLossForParticle,
+  parseFriendScore, perfectClearOutcome, resultComment as gradeResultComment, scoopDecision, scoreParticle, soupLossForParticle,
   waveClearBonus, wrongToolPenalty
 } from './rules.js';
 import { dailyChallengeDescriptor as parseDailyChallengeDescriptor, dailyDateTaipei, formatSeed, hashSeed, mulberry32 } from './rng.js';
@@ -160,6 +160,7 @@ let lastCountdownSecond = null;
 let spoonStreak = 0;
 let lastSpoonUse = null;
 let lives = CONFIG.PERFECT_LIVES;
+let perfectClearBonusScore = 0;
 let successfulScoops = 0;
 let scoopAttempts = 0;
 let playedMs = 0;
@@ -748,6 +749,18 @@ function tryScoop() {
     endGame('lives');
     return;
   }
+  const perfectClear = perfectClearOutcome({
+    challengeRule, particles, lives, remainingMs: Math.max(0, deadline - now)
+  });
+  if (perfectClear) {
+    perfectClearBonusScore = perfectClear.bonus;
+    score += perfectClearBonusScore;
+    setText(scoreEl, score);
+    if (perfectClearBonusScore > 0) addScoopHint(`鍋空提早完成 +${perfectClearBonusScore} 分！`, 1);
+    showScoopHints();
+    endGame(perfectClear.reason);
+    return;
+  }
   if (challengeRule === 'clear' && allFoodCorrectlyRemoved(particles, initialMass, removedMass)) {
     showScoopHints();
     endGame('cleared');
@@ -1062,6 +1075,7 @@ function startGame(mode = 'challenge', daily = false) {
   lastSpoonUse = null;
   successfulScoops = 0;
   scoopAttempts = 0;
+  perfectClearBonusScore = 0;
   playedMs = 0;
   lives = CONFIG.PERFECT_LIVES;
   lastPlayTime = null;
@@ -1237,6 +1251,7 @@ function endGame(reason = 'timeout') {
     <div>🎯 工具正確率：<strong>${correctRate}%</strong>｜❌ 失誤率：<strong>${errorRate}%</strong>（${scooped.fail} 次）</div>
     ${challengeRule === 'score' ? `<div>🌊 波次數：<strong>${wavesSpawned}</strong>｜最高連擊：<strong>${maxCombo}</strong>｜清波次數：<strong>${waveClears}</strong></div>` : ''}
     ${challengeRule === 'perfect' ? `<div>❤️ 剩餘命數：<strong>${lives}</strong>／${CONFIG.PERFECT_LIVES}</div>` : ''}
+    ${challengeRule === 'perfect' && reason === 'cleared' ? `<div>⏱️ 鍋空提前完成獎勵：<strong>+${perfectClearBonusScore}</strong> 分</div>` : ''}
     <div>🥣 帶走湯汁估算：<strong>${Math.round(soupLossMl)} mL</strong></div>
     <div>❄️ 冷藏凝油：<strong>${chillUsed ? '已使用' : '未使用'}</strong></div>
     ${bestCompare ? `<div>${bestCompare}</div>` : ''}
@@ -1271,7 +1286,7 @@ function updateMenuDescriptions() {
   const rule = RULES[ruleSelect.value] || RULES.score;
   const broth = BROTHS[brothSelect.value] || BROTHS.clear;
   const perfectOption = ruleSelect.querySelector('option[value="perfect"]');
-  setText(perfectOption, `無失誤挑戰｜${CONFIG.PERFECT_LIVES} 條命，時間到仍有命即完成`);
+  setText(perfectOption, `無失誤挑戰｜${CONFIG.PERFECT_LIVES} 條命，時間到或鍋空且仍有命即完成`);
   setText(stageDescription, `${stage.description} 食材：肉沫 ${stage.counts.meat}、蔬菜 ${stage.counts.veg}、浮油 ${stage.counts.oil}、骨頭 ${stage.counts.bone}。`);
   setText(ruleDescription, ruleSelect.value === 'clear'
     ? `${rule.description} 時限：新手 75 秒、家常 60 秒、熱鬧 55 秒。`

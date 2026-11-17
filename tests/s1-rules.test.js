@@ -6,8 +6,10 @@ import {
 } from '../src/config.js';
 import {
   achievementConditions, allFoodCorrectlyRemoved, isEligibleDailyChallenge,
-  missionSuccess, overallCleanliness, resultComment, scoopDecision
+  missionSuccess, overallCleanliness, perfectClearBonus, perfectClearOutcome,
+  resultComment, scoopDecision
 } from '../src/rules.js';
+import { PERFECT_CLEAR_BONUS_PER_S } from '../src/balance.js';
 import { hashSeed } from '../src/rng.js';
 
 describe('S1 rule and achievement regressions', () => {
@@ -57,6 +59,39 @@ describe('S1 rule and achievement regressions', () => {
       gameMode: 'challenge', challengeRule: 'perfect', missionWon: false,
       cleanliness: 0, score: 0, correctRate: 0, remaining: 1, reason: 'manual'
     })).toContain('已中止');
+  });
+
+  it('completes perfect mode on an empty pot with lives left and awards the rounded time bonus', () => {
+    const outcome = perfectClearOutcome({
+      challengeRule: 'perfect', particles: [], lives: 2, remainingMs: 12_350
+    });
+
+    expect(outcome).toEqual({
+      reason: 'cleared', success: true,
+      bonus: Math.round(12_350 * PERFECT_CLEAR_BONUS_PER_S / 1_000)
+    });
+    expect(missionSuccess('perfect', outcome.reason, { particles: [], lives: 2 })).toBe(true);
+    expect(perfectClearBonus(-100)).toBe(0);
+  });
+
+  it('does not complete perfect mode successfully without lives or while food remains', () => {
+    expect(perfectClearOutcome({
+      challengeRule: 'perfect', particles: [], lives: 0, remainingMs: 10_000
+    })).toBeNull();
+    expect(missionSuccess('perfect', 'cleared', { particles: [], lives: 0 })).toBe(false);
+    expect(perfectClearOutcome({
+      challengeRule: 'perfect', particles: [{ type: 'meat' }], lives: 2, remainingMs: 10_000
+    })).toBeNull();
+  });
+
+  it('leaves other challenge rules outside the perfect empty-pot completion path', () => {
+    for (const challengeRule of ['score', 'clear']) {
+      expect(perfectClearOutcome({ challengeRule, particles: [], lives: 2, remainingMs: 10_000 })).toBeNull();
+    }
+    expect(missionSuccess('score', 'cleared', {})).toBeNull();
+    expect(missionSuccess('clear', 'cleared', {
+      particles: [], initialMass: { meat: 1 }, removedMass: { meat: 1 }
+    })).toBe(true);
   });
 
   it('applies first and daily achievement minimums', () => {

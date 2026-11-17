@@ -52,7 +52,7 @@ export const BOUNDARY_REFLECTION_MULTIPLIER = 1.7;
 export const RULES = {
   score: { name: '限時衝分', description: '時間內盡量撈取，挑戰更高分數。' },
   clear: { name: '全清挑戰', description: '限時清空整鍋；時間到仍有食材就算未完成。' },
-  perfect: { name: '無失誤挑戰', description: '限時撈取，共有 3 條命；時間到仍有命數就算完成。' }
+  perfect: { name: '無失誤挑戰', description: '限時撈取，共有 3 條命；時間到或鍋空時仍有命數就算完成。' }
 };
 
 export const BROTHS = {

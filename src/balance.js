@@ -18,6 +18,7 @@ export const COMBO_WINDOW_MS = 1_500;
 export const COMBO_STEP = 0.05;
 export const COMBO_MAX = 10;
 export const WAVE_CLEAR_BONUS_PER_S = 15;
+export const PERFECT_CLEAR_BONUS_PER_S = 10;
 
 export const CLEAR_RULE_DURATION_MS = Object.freeze({ starter: 75_000, home: 60_000, feast: 55_000 });
 export const DAILY_WAVE_STREAM_XOR = 0x9E3779B9;
