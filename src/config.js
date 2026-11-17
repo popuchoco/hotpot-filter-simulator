@@ -52,7 +52,7 @@ export const BOUNDARY_REFLECTION_MULTIPLIER = 1.7;
 export const RULES = {
   score: { name: '限時衝分', description: '時間內盡量撈取，挑戰更高分數。' },
   clear: { name: '全清挑戰', description: '限時清空整鍋；時間到仍有食材就算未完成。' },
-  perfect: { name: '無失誤挑戰', description: '限時撈取，共有 3 條命；時間到仍有命數就算完成。' }
+  perfect: { name: '無失誤挑戰', description: '限時撈取，共有 3 條命；時間到或鍋空時仍有命數就算完成。' }
 };
 
 export const BROTHS = {
@@ -123,8 +123,9 @@ export const TOOL_CONFIG = {
   }
 };
 
-// The game canvas is capped at 510 px; at 1920×1080 this gives a pot radius of 214.2 px.
-// Shape dimensions below preserve the existing desktop head sizes at that reference radius.
+// At 1920×1080, the pot diameter is ≈ 0.84×canvas ≈ 60–65% of viewport height when the stage allows it; smaller screens are stage-limited, so 1366×768 and 390×844 are unchanged.
+export const CANVAS_MAX_DISPLAY_SIZE = 800;
+// Tool shape dimensions preserve the existing desktop head sizes at the 510 px reference radius.
 export const POT_RADIUS_RATIO = .42;
 export const POT_REFERENCE_CANVAS_SIZE = 510;
 export const TOOL_SHAPE_REFERENCE_POT_RADIUS = POT_REFERENCE_CANVAS_SIZE * POT_RADIUS_RATIO;

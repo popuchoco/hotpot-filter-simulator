@@ -10,6 +10,7 @@ import {
 } from './config.js';
 import {
   CLEAR_RULE_DURATION_MS, COMBO_MAX, COMBO_STEP, COMBO_WINDOW_MS, FIRST_BOIL_DELAY_MS,
+  PERFECT_CLEAR_BONUS_PER_S,
   WAVE_CLEAR_BONUS_PER_S
 } from './balance.js';
 import { hashSeed } from './rng.js';
@@ -178,8 +179,19 @@ export function missionSuccess(rule, reason, {
   lives = Math.max(0, PERFECT_LIVES - failures)
 } = {}) {
   if (rule === 'clear') return reason === 'cleared' && allFoodCorrectlyRemoved(particles, initialMass, removedMass);
-  if (rule === 'perfect') return reason === 'timeout' && lives > 0;
+  if (rule === 'perfect') {
+    return lives > 0 && (reason === 'timeout' || (reason === 'cleared' && particles.length === 0));
+  }
   return null;
+}
+
+export function perfectClearBonus(remainingMs) {
+  return Math.max(0, Math.round((Number(remainingMs) || 0) * PERFECT_CLEAR_BONUS_PER_S / 1_000));
+}
+
+export function perfectClearOutcome({ challengeRule, particles, lives, remainingMs }) {
+  if (challengeRule !== 'perfect' || particles.length > 0 || lives <= 0) return null;
+  return { reason: 'cleared', success: true, bonus: perfectClearBonus(remainingMs) };
 }
 
 export function isEligibleDailyChallenge({ date, seed, todayDate }) {
