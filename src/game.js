@@ -16,6 +16,8 @@ import {
 } from './balance.js';
 import { createWaveRng, createWaveState, isFadingIn, nextWaveDecision, waveComposition, waveSpawnPositions } from './waves.js';
 import { addVisualEffect } from './visual-effects.js';
+import { fireLevelAudioSettings } from './audio.js';
+import { heatLevelAt } from './rendering.js';
 
 const {
   ACHIEVEMENTS, ACHIEVEMENTS_KEY, BEST_SCORE_KEY, BIG_PARTICLE_RADIUS,
@@ -156,6 +158,9 @@ let highContrast = false;
 let soundEnabled = false;
 let practiceWavesEnabled = PRACTICE_WAVES_ENABLED;
 let audioContext = null;
+let simmerSource = null;
+let simmerGain = null;
+let simmerTargets = null;
 let lastCountdownSecond = null;
 let spoonStreak = 0;
 let lastSpoonUse = null;
@@ -901,6 +906,56 @@ function unlockAudioFromGesture() {
   window.removeEventListener('keydown', unlockAudioFromGesture, true);
 }
 
+function createSimmerAmbience() {
+  if (!audioContext || simmerGain) return Boolean(simmerGain);
+  try {
+    const sampleRate = audioContext.sampleRate;
+    const buffer = audioContext.createBuffer(1, sampleRate * 2, sampleRate);
+    const samples = buffer.getChannelData(0);
+    for (let index = 0; index < samples.length; index += 1) samples[index] = Math.random() * 2 - 1;
+
+    simmerSource = audioContext.createBufferSource();
+    simmerSource.buffer = buffer;
+    simmerSource.loop = true;
+    const filter = audioContext.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 720;
+    filter.Q.value = .7;
+    simmerGain = audioContext.createGain();
+    simmerGain.gain.value = 0;
+    simmerSource.connect(filter);
+    filter.connect(simmerGain);
+    simmerGain.connect(audioContext.destination);
+    simmerSource.start();
+    return true;
+  } catch {
+    simmerSource = null;
+    simmerGain = null;
+    return false;
+  }
+}
+
+function updateSimmerAmbience(fireLevel, immediateMute = false) {
+  if (!audioContext) return;
+  const settings = fireLevelAudioSettings(fireLevel, !soundEnabled || !running);
+  if (!simmerGain && settings.gain > 0 && !createSimmerAmbience()) return;
+  if (!simmerGain) return;
+  const alreadyTargeted = simmerTargets?.gain === settings.gain
+    && simmerTargets?.playbackRate === settings.playbackRate;
+  if (alreadyTargeted && !(settings.gain === 0 && immediateMute)) return;
+
+  const now = audioContext.currentTime;
+  if (settings.gain === 0 && immediateMute) {
+    simmerGain.gain.cancelScheduledValues(now);
+    simmerGain.gain.setValueAtTime(0, now);
+  } else {
+    // A 0.1 s time constant reaches its new level in about 0.3 s.
+    simmerGain.gain.setTargetAtTime(settings.gain, now, .1);
+  }
+  if (simmerSource) simmerSource.playbackRate.setTargetAtTime(settings.playbackRate, now, .1);
+  simmerTargets = settings;
+}
+
 function playSound(kind) {
   if (!soundEnabled || !audioContext) return;
   try {
@@ -1011,6 +1066,7 @@ function loop(now) {
       playSound('boil');
     }
   }
+  updateSimmerAmbience(heatLevelAt(simulationTimeMs, BROTHS[brothId]));
   for (const particle of particles) {
     if (particle.waveIncoming && !isFadingIn(particle, simulationTimeMs)) particle.waveIncoming = false;
   }
@@ -1116,6 +1172,7 @@ function startGame(mode = 'challenge', daily = false) {
   if (mode === 'challenge') deadline = performance.now() + remainingMs;
   boilingNow = currentBoilState();
   updateEventDisplay();
+  updateSimmerAmbience(heatLevelAt(simulationTimeMs, BROTHS[brothId]));
   if (boilingNow) playSound('boil');
   updateMethodDisplay();
   lastFrameTime = performance.now();
@@ -1139,6 +1196,7 @@ function pauseGame() {
   if (chillUsed) chillRemainingMs = Math.max(0, chilledUntil - now);
   if (gameMode === 'practice' && chillCooldownUntil > now) chillCooldownRemainingMs = chillCooldownUntil - now;
   running = false;
+  updateSimmerAmbience(heatLevelAt(simulationTimeMs, BROTHS[brothId]));
   cancelAnimationFrame(animationFrame);
   lastFrameTime = null;
   updateTimerDisplay();
@@ -1152,6 +1210,7 @@ function resumeGame() {
   if (running || gameEnded || (gameMode === 'challenge' && remainingMs <= 0)) return;
   const now = performance.now();
   running = true;
+  updateSimmerAmbience(heatLevelAt(simulationTimeMs, BROTHS[brothId]));
   lastPlayTime = now;
   if (gameMode === 'challenge') deadline = now + remainingMs;
   if (chillUsed && chillRemainingMs > 0) {
@@ -1185,6 +1244,7 @@ function endGame(reason = 'timeout') {
   gameEnded = true;
   endReason = reason;
   running = false;
+  updateSimmerAmbience(heatLevelAt(simulationTimeMs, BROTHS[brothId]));
   lastPlayTime = null;
   cancelAnimationFrame(animationFrame);
   remainingMs = 0;
@@ -1448,6 +1508,7 @@ document.getElementById('soundToggle').addEventListener('change', event => {
   soundEnabled = event.target.checked;
   saveSettings();
   if (soundEnabled && prepareAudioContextFromGesture()) playSound('scoop');
+  updateSimmerAmbience(heatLevelAt(simulationTimeMs, BROTHS[brothId]), !soundEnabled);
 });
 skinSelect.addEventListener('change', () => {
   selectedSkin = skinSelect.value in POT_SKINS ? skinSelect.value : 'steel';
