@@ -16,7 +16,9 @@ import {
 } from './balance.js';
 import { createWaveRng, createWaveState, isFadingIn, nextWaveDecision, waveComposition, waveSpawnPositions } from './waves.js';
 import { addVisualEffect } from './visual-effects.js';
-import { fireLevelAudioSettings, quantizeFireLevel, shouldRetargetAmbience } from './audio.js';
+import {
+  AMBIENCE_TIME_CONSTANT_S, fireLevelAudioSettings, quantizeFireLevel, scheduleAmbienceGain, shouldRetargetAmbience
+} from './audio.js';
 import { heatLevelAt } from './rendering.js';
 
 document.documentElement.style.setProperty(
@@ -947,14 +949,8 @@ function updateSimmerAmbience(fireLevel) {
   if (!shouldRetargetAmbience(simmerTargets, settings)) return;
 
   const now = audioContext.currentTime;
-  if (settings.gain === 0) {
-    simmerGain.gain.cancelScheduledValues(now);
-    simmerGain.gain.setValueAtTime(0, now);
-  } else {
-    // A 0.1 s time constant reaches its new level in about 0.3 s.
-    simmerGain.gain.setTargetAtTime(settings.gain, now, .1);
-  }
-  if (simmerSource) simmerSource.playbackRate.setTargetAtTime(settings.playbackRate, now, .1);
+  scheduleAmbienceGain(simmerGain.gain, settings.gain, now);
+  if (simmerSource) simmerSource.playbackRate.setTargetAtTime(settings.playbackRate, now, AMBIENCE_TIME_CONSTANT_S);
   simmerTargets = settings;
 }
 

@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AMBIENCE_FIRE_LEVEL_STEPS, fireLevelAudioSettings, quantizeFireLevel, shouldRetargetAmbience
+  AMBIENCE_FADE_OUT_S, AMBIENCE_FIRE_LEVEL_STEPS, AMBIENCE_TIME_CONSTANT_S, fireLevelAudioSettings,
+  quantizeFireLevel, scheduleAmbienceGain, shouldRetargetAmbience
 } from '../src/audio.js';
+
+function recordingParam(value) {
+  const calls = [];
+  const param = { value };
+  for (const name of ['cancelScheduledValues', 'setValueAtTime', 'linearRampToValueAtTime', 'setTargetAtTime']) {
+    param[name] = (...args) => { calls.push([name, ...args]); return param; };
+  }
+  return { param, calls };
+}
 
 describe('S7 simmer ambience', () => {
   it('raises ambience gain and playback rate with fire level', () => {
@@ -45,5 +55,28 @@ describe('S7 simmer ambience', () => {
     expect(mutedSettings.gain).toBe(0);
     expect(shouldRetargetAmbience(activeSettings, mutedSettings)).toBe(true);
     expect(shouldRetargetAmbience(mutedSettings, activeSettings)).toBe(true);
+  });
+
+  it('fades ambience out over a short ramp instead of cutting straight to zero', () => {
+    const { param, calls } = recordingParam(.03);
+    scheduleAmbienceGain(param, 0, 2);
+    expect(AMBIENCE_FADE_OUT_S).toBeGreaterThanOrEqual(.05);
+    expect(AMBIENCE_FADE_OUT_S).toBeLessThanOrEqual(.1);
+    expect(calls).toEqual([
+      ['cancelScheduledValues', 2],
+      ['setValueAtTime', .03, 2],
+      ['linearRampToValueAtTime', 0, 2 + AMBIENCE_FADE_OUT_S]
+    ]);
+    expect(calls.some(([name, target]) => name === 'setValueAtTime' && target === 0)).toBe(false);
+  });
+
+  it('anchors the current gain before easing toward a non-zero target', () => {
+    const { param, calls } = recordingParam(0);
+    scheduleAmbienceGain(param, .025, 1.5);
+    expect(calls).toEqual([
+      ['cancelScheduledValues', 1.5],
+      ['setValueAtTime', 0, 1.5],
+      ['setTargetAtTime', .025, 1.5, AMBIENCE_TIME_CONSTANT_S]
+    ]);
   });
 });
