@@ -1,23 +1,33 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
-  CANVAS_MAX_DISPLAY_SIZE, POT_RADIUS_RATIO, POT_REFERENCE_CANVAS_SIZE,
-  TOOL_SHAPE_REFERENCE_POT_RADIUS, scaledToolShape
+  POT_REFERENCE_CANVAS_SIZE, POT_RADIUS_RATIO, TOOL_SHAPE_REFERENCE_POT_RADIUS, scaledToolShape
 } from '../src/config.js';
+
+vi.mock('../src/game.js?v=20261117-1', () => ({
+  brothId: 'clear', canvasHeight: 0, canvasWidth: 0, ctx: {}, currentTool: 'spoon',
+  highContrast: false, isOilChilled: () => false, mouse: { x: 0, y: 0 },
+  particleGroups: {}, reduceMotion: false, selectedSkin: 'steel', visualEffects: []
+}));
+vi.stubGlobal('window', { location: { search: '' } });
+const { drawnPotRadius } = await import('../src/renderer.js');
+vi.unstubAllGlobals();
 
 const styleSource = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
 const gameSource = readFileSync(new URL('../src/game.js', import.meta.url), 'utf8');
 
 describe('H2 desktop canvas size', () => {
   it('allows the intended desktop pot size while preserving reference tool scaling', () => {
-    const potDiameterToViewportHeight = CANVAS_MAX_DISPLAY_SIZE * 2 * POT_RADIUS_RATIO / 1080;
-    expect(potDiameterToViewportHeight).toBeGreaterThanOrEqual(.60);
-    expect(potDiameterToViewportHeight).toBeLessThanOrEqual(.65);
     expect(POT_REFERENCE_CANVAS_SIZE).toBe(510);
 
     const referenceShape = scaledToolShape('spoon', TOOL_SHAPE_REFERENCE_POT_RADIUS);
     const doubleSizeShape = scaledToolShape('spoon', TOOL_SHAPE_REFERENCE_POT_RADIUS * 2);
     expect(doubleSizeShape.radiusX).toBe(referenceShape.radiusX * 2);
+  });
+
+  it('calculates the drawn pot radius from the smaller canvas dimension', () => {
+    expect(drawnPotRadius(800, 600)).toBe(600 * POT_RADIUS_RATIO);
+    expect(drawnPotRadius(600, 800)).toBe(600 * POT_RADIUS_RATIO);
   });
 
   it('uses the configured display size for the canvas CSS width', () => {

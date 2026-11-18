@@ -1,6 +1,6 @@
 // Game state, input, UI, persistence, and score flow.
 import * as CONFIG from './config.js';
-import { drawParticles, drawSoup, drawTool, drawVisualEffects } from './renderer.js';
+import { drawnPotRadius, drawParticles, drawSoup, drawTool, drawVisualEffects } from './renderer.js';
 import { updatePhysics } from './physics.js';
 import { rescaleParticles } from './geometry.js';
 import {
@@ -1457,6 +1457,7 @@ function installTestHook() {
     canvasWidth: () => canvasWidth,
     canvasHeight: () => canvasHeight,
     potRadius: () => currentPotRadius(),
+    drawnPotRadius: () => drawnPotRadius(canvasWidth, canvasHeight),
     lives: () => lives,
     waves: () => wavesSpawned,
     maxCombo: () => maxCombo,
