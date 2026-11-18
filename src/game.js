@@ -16,7 +16,7 @@ import {
 } from './balance.js';
 import { createWaveRng, createWaveState, isFadingIn, nextWaveDecision, waveComposition, waveSpawnPositions } from './waves.js';
 import { addVisualEffect } from './visual-effects.js';
-import { fireLevelAudioSettings } from './audio.js';
+import { fireLevelAudioSettings, quantizeFireLevel, shouldRetargetAmbience } from './audio.js';
 import { heatLevelAt } from './rendering.js';
 
 const {
@@ -935,17 +935,15 @@ function createSimmerAmbience() {
   }
 }
 
-function updateSimmerAmbience(fireLevel, immediateMute = false) {
+function updateSimmerAmbience(fireLevel) {
   if (!audioContext) return;
-  const settings = fireLevelAudioSettings(fireLevel, !soundEnabled || !running);
+  const settings = fireLevelAudioSettings(quantizeFireLevel(fireLevel), !soundEnabled || !running);
   if (!simmerGain && settings.gain > 0 && !createSimmerAmbience()) return;
   if (!simmerGain) return;
-  const alreadyTargeted = simmerTargets?.gain === settings.gain
-    && simmerTargets?.playbackRate === settings.playbackRate;
-  if (alreadyTargeted && !(settings.gain === 0 && immediateMute)) return;
+  if (!shouldRetargetAmbience(simmerTargets, settings)) return;
 
   const now = audioContext.currentTime;
-  if (settings.gain === 0 && immediateMute) {
+  if (settings.gain === 0) {
     simmerGain.gain.cancelScheduledValues(now);
     simmerGain.gain.setValueAtTime(0, now);
   } else {
@@ -1508,7 +1506,7 @@ document.getElementById('soundToggle').addEventListener('change', event => {
   soundEnabled = event.target.checked;
   saveSettings();
   if (soundEnabled && prepareAudioContextFromGesture()) playSound('scoop');
-  updateSimmerAmbience(heatLevelAt(simulationTimeMs, BROTHS[brothId]), !soundEnabled);
+  updateSimmerAmbience(heatLevelAt(simulationTimeMs, BROTHS[brothId]));
 });
 skinSelect.addEventListener('change', () => {
   selectedSkin = skinSelect.value in POT_SKINS ? skinSelect.value : 'steel';

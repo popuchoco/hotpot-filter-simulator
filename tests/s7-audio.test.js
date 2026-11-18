@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { fireLevelAudioSettings } from '../src/audio.js';
+import {
+  AMBIENCE_FIRE_LEVEL_STEPS, fireLevelAudioSettings, quantizeFireLevel, shouldRetargetAmbience
+} from '../src/audio.js';
 
 describe('S7 simmer ambience', () => {
   it('raises ambience gain and playback rate with fire level', () => {
@@ -14,5 +16,34 @@ describe('S7 simmer ambience', () => {
     expect(fireLevelAudioSettings(-2)).toEqual(fireLevelAudioSettings(0));
     expect(fireLevelAudioSettings(2)).toEqual(fireLevelAudioSettings(1));
     expect(fireLevelAudioSettings(.75, true).gain).toBe(0);
+  });
+
+  it('retargets a slow two-second fire ramp only at the configured steps', () => {
+    let previousSettings = null;
+    let retargets = 0;
+
+    for (let frame = 0; frame <= 120; frame += 1) {
+      const level = quantizeFireLevel(frame / 120);
+      const settings = fireLevelAudioSettings(level);
+      if (shouldRetargetAmbience(previousSettings, settings)) retargets += 1;
+      previousSettings = settings;
+    }
+
+    expect(retargets).toBeLessThanOrEqual(AMBIENCE_FIRE_LEVEL_STEPS + 1);
+    expect(retargets).toBeLessThan(120);
+  });
+
+  it('does not retarget an identical level', () => {
+    const settings = fireLevelAudioSettings(quantizeFireLevel(.42));
+    expect(shouldRetargetAmbience(settings, fireLevelAudioSettings(quantizeFireLevel(.42)))).toBe(false);
+  });
+
+  it('retargets immediately when muted and again when unmuted', () => {
+    const activeSettings = fireLevelAudioSettings(quantizeFireLevel(.42));
+    const mutedSettings = fireLevelAudioSettings(quantizeFireLevel(.42), true);
+
+    expect(mutedSettings.gain).toBe(0);
+    expect(shouldRetargetAmbience(activeSettings, mutedSettings)).toBe(true);
+    expect(shouldRetargetAmbience(mutedSettings, activeSettings)).toBe(true);
   });
 });
