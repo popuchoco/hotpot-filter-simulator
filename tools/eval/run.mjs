@@ -91,8 +91,11 @@ async function runOne(task, index) {
       }
       return await page.evaluate(() => {
         const state = window.__hotpot.state;
+        const perfectClearBonus = state.perfectClearBonus ?? 0;
         return {
           score: state.score,
+          perfectClearBonus,
+          scoreWithoutBonus: state.score - perfectClearBonus,
           simS: Math.round(state.simulationTimeMs / 1000),
           ended: state.gameEnded,
           cleanliness: document.getElementById('cleanliness').textContent,

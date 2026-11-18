@@ -1434,6 +1434,7 @@ function installTestHook() {
   const getters = {
     particles: () => particles,
     score: () => score,
+    perfectClearBonus: () => perfectClearBonusScore,
     scooped: () => scooped,
     soupLossMl: () => soupLossMl,
     simulationTimeMs: () => simulationTimeMs,
