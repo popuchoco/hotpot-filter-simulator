@@ -19,6 +19,10 @@ import { addVisualEffect } from './visual-effects.js';
 import { fireLevelAudioSettings, quantizeFireLevel, shouldRetargetAmbience } from './audio.js';
 import { heatLevelAt } from './rendering.js';
 
+document.documentElement.style.setProperty(
+  '--canvas-max-display-size', `${CONFIG.CANVAS_MAX_DISPLAY_SIZE}px`
+);
+
 const {
   ACHIEVEMENTS, ACHIEVEMENTS_KEY, BEST_SCORE_KEY, BIG_PARTICLE_RADIUS,
   BROTHS, CHILL_COST_MS, CHILL_EFFECT_MS, CHILL_PRACTICE_COOLDOWN_MS, FRAME_SCALE_MAX,
