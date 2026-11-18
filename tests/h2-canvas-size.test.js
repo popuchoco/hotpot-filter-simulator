@@ -4,7 +4,10 @@ import {
   POT_REFERENCE_CANVAS_SIZE, POT_RADIUS_RATIO, TOOL_SHAPE_REFERENCE_POT_RADIUS, scaledToolShape
 } from '../src/config.js';
 
-vi.mock('../src/game.js?v=20261117-1', () => ({
+// Follow renderer.js's cache-busting query so tools/bump-version.mjs does not break this mock.
+const rendererSource = readFileSync(new URL('../src/renderer.js', import.meta.url), 'utf8');
+const gameImportQuery = rendererSource.match(/from '\.\/game\.js(\?v=[^']*)?'/)?.[1] ?? '';
+vi.doMock(`../src/game.js${gameImportQuery}`, () => ({
   brothId: 'clear', canvasHeight: 0, canvasWidth: 0, ctx: {}, currentTool: 'spoon',
   highContrast: false, isOilChilled: () => false, mouse: { x: 0, y: 0 },
   particleGroups: {}, reduceMotion: false, selectedSkin: 'steel', visualEffects: []
