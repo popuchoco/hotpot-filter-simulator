@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
-  POT_REFERENCE_CANVAS_SIZE, POT_RADIUS_RATIO, TOOL_SHAPE_REFERENCE_POT_RADIUS, scaledToolShape
+  CANVAS_MAX_DISPLAY_SIZE, POT_REFERENCE_CANVAS_SIZE, POT_RADIUS_RATIO, TOOL_SHAPE_REFERENCE_POT_RADIUS, scaledToolShape
 } from '../src/config.js';
 
 // Follow renderer.js's cache-busting query so tools/bump-version.mjs does not break this mock.
@@ -35,8 +35,11 @@ describe('H2 desktop canvas size', () => {
 
   it('uses the configured display size for the canvas CSS width', () => {
     const canvasRule = styleSource.match(/\.canvas-stage\s+#canvas\s*\{([^}]*)\}/)?.[1];
-    expect(canvasRule).toContain('width: min(100%, var(--canvas-max-display-size));');
-    expect(styleSource).not.toContain('800px');
+    expect(canvasRule).toContain('width: min(100%, var(--canvas-max-display-size, ');
+    // The CSS fallback (used before game.js runs) must mirror config; it is the only px literal for this size.
+    const fallback = canvasRule.match(/var\(--canvas-max-display-size,\s*(\d+)px\)/)?.[1];
+    expect(Number(fallback)).toBe(CANVAS_MAX_DISPLAY_SIZE);
+    expect(styleSource.split(`${CANVAS_MAX_DISPLAY_SIZE}px`).length - 1).toBe(1);
     expect(gameSource).toMatch(/document\.documentElement\.style\.setProperty\(\s*'--canvas-max-display-size',\s*`\$\{CONFIG\.CANVAS_MAX_DISPLAY_SIZE\}px`\s*\)/);
   });
 });

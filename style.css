@@ -91,7 +91,7 @@ body:has(#game:not(.hidden)) {
 .canvas-stage #canvas {
   display: block;
   /* Sourced from CANVAS_MAX_DISPLAY_SIZE in src/config.js. */
-  width: min(100%, var(--canvas-max-display-size));
+  width: min(100%, var(--canvas-max-display-size, 800px));
   height: auto;
   aspect-ratio: 1 / 1;
   max-width: 100%;
