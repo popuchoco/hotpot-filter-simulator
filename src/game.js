@@ -1452,6 +1452,8 @@ function installTestHook() {
     scoopAttempts: () => scoopAttempts,
     playedMs: () => playedMs,
     remainingMs: () => remainingMs,
+    ambienceGain: () => simmerGain ? simmerGain.gain.value : null,
+    ambienceTargetGain: () => simmerTargets?.gain ?? null,
     canvasWidth: () => canvasWidth,
     canvasHeight: () => canvasHeight,
     potRadius: () => currentPotRadius(),

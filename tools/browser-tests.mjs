@@ -7,10 +7,11 @@ let browser;
 try {
   browser = await launchChromium();
 
-  async function createGamePage(viewport = { width: 1280, height: 800 }) {
+  async function createGamePage(viewport = { width: 1280, height: 800 }, { enableSound = false } = {}) {
     const page = await browser.newPage({ viewport, deviceScaleFactor: 1 });
     await page.goto(`${server.origin}/?test=1`, { waitUntil: 'load' });
     assert.equal(await page.evaluate(() => Boolean(window.__hotpot)), true, 'test hook is available with ?test=1');
+    if (enableSound) await page.click('#soundToggle');
     await page.click('#startBtn');
     await page.waitForFunction(() => window.__hotpot.state.running);
     return page;
@@ -62,6 +63,34 @@ try {
       assert.equal(await page.evaluate(() => window.__hotpot.state.running), false, 'hidden visibility pauses the game');
       const pausedRemainingMs = await page.evaluate(() => window.__hotpot.state.remainingMs);
       assert.match(await page.locator('#hint').textContent(), /已暫停/);
+      await page.waitForTimeout(1_000);
+      assert.equal(await page.evaluate(() => window.__hotpot.state.remainingMs), pausedRemainingMs, 'paused time does not count down');
+    } finally {
+      await page.close();
+    }
+  }
+
+  {
+    const page = await createGamePage({ width: 1280, height: 800 }, { enableSound: true });
+    try {
+      await page.waitForFunction(() => window.__hotpot.state.ambienceTargetGain > 0, undefined, { timeout: 1_000 });
+      await page.locator('#soundToggle').evaluate(toggle => toggle.click());
+      assert.equal(await page.evaluate(() => window.__hotpot.state.ambienceTargetGain), 0, 'muting targets zero ambience gain');
+      await page.waitForFunction(() => window.__hotpot.state.ambienceGain === 0, undefined, { timeout: 1_000 });
+    } finally {
+      await page.close();
+    }
+  }
+
+  {
+    const page = await createGamePage({ width: 1280, height: 800 }, { enableSound: true });
+    try {
+      await page.waitForFunction(() => window.__hotpot.state.ambienceTargetGain > 0, undefined, { timeout: 1_000 });
+      await page.click('#pauseBtn');
+      assert.equal(await page.evaluate(() => window.__hotpot.state.running), false, 'pause stops the game');
+      assert.equal(await page.evaluate(() => window.__hotpot.state.ambienceTargetGain), 0, 'pause targets zero ambience gain');
+      await page.waitForFunction(() => window.__hotpot.state.ambienceGain < 0.001, undefined, { timeout: 1_500 });
+      const pausedRemainingMs = await page.evaluate(() => window.__hotpot.state.remainingMs);
       await page.waitForTimeout(1_000);
       assert.equal(await page.evaluate(() => window.__hotpot.state.remainingMs), pausedRemainingMs, 'paused time does not count down');
     } finally {
