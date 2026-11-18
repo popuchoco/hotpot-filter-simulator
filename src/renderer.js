@@ -2,7 +2,7 @@
 import {
   brothId, canvasHeight, canvasWidth, ctx, currentTool, highContrast,
   isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin, visualEffects
-} from './game.js?v=20261117-1';
+} from './game.js?v=20261118-1';
 import { BROTHS, POT_RADIUS_RATIO, POT_SKINS, scaledToolShape, TOOL_SHAPES } from './config.js';
 import { WAVE_FADE_IN_MS } from './balance.js';
 import { drawFoodSprite } from './food-sprites.js';
