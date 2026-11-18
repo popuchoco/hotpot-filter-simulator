@@ -1,6 +1,6 @@
 // Game state, input, UI, persistence, and score flow.
 import * as CONFIG from './config.js';
-import { drawParticles, drawSoup, drawTool, drawVisualEffects } from './renderer.js';
+import { drawnPotRadius, drawParticles, drawSoup, drawTool, drawVisualEffects } from './renderer.js';
 import { updatePhysics } from './physics.js';
 import { rescaleParticles } from './geometry.js';
 import {
@@ -16,8 +16,14 @@ import {
 } from './balance.js';
 import { createWaveRng, createWaveState, isFadingIn, nextWaveDecision, waveComposition, waveSpawnPositions } from './waves.js';
 import { addVisualEffect } from './visual-effects.js';
-import { fireLevelAudioSettings } from './audio.js';
+import {
+  AMBIENCE_TIME_CONSTANT_S, fireLevelAudioSettings, quantizeFireLevel, scheduleAmbienceGain, shouldRetargetAmbience
+} from './audio.js';
 import { heatLevelAt } from './rendering.js';
+
+document.documentElement.style.setProperty(
+  '--canvas-max-display-size', `${CONFIG.CANVAS_MAX_DISPLAY_SIZE}px`
+);
 
 const {
   ACHIEVEMENTS, ACHIEVEMENTS_KEY, BEST_SCORE_KEY, BIG_PARTICLE_RADIUS,
@@ -935,24 +941,16 @@ function createSimmerAmbience() {
   }
 }
 
-function updateSimmerAmbience(fireLevel, immediateMute = false) {
+function updateSimmerAmbience(fireLevel) {
   if (!audioContext) return;
-  const settings = fireLevelAudioSettings(fireLevel, !soundEnabled || !running);
+  const settings = fireLevelAudioSettings(quantizeFireLevel(fireLevel), !soundEnabled || !running);
   if (!simmerGain && settings.gain > 0 && !createSimmerAmbience()) return;
   if (!simmerGain) return;
-  const alreadyTargeted = simmerTargets?.gain === settings.gain
-    && simmerTargets?.playbackRate === settings.playbackRate;
-  if (alreadyTargeted && !(settings.gain === 0 && immediateMute)) return;
+  if (!shouldRetargetAmbience(simmerTargets, settings)) return;
 
   const now = audioContext.currentTime;
-  if (settings.gain === 0 && immediateMute) {
-    simmerGain.gain.cancelScheduledValues(now);
-    simmerGain.gain.setValueAtTime(0, now);
-  } else {
-    // A 0.1 s time constant reaches its new level in about 0.3 s.
-    simmerGain.gain.setTargetAtTime(settings.gain, now, .1);
-  }
-  if (simmerSource) simmerSource.playbackRate.setTargetAtTime(settings.playbackRate, now, .1);
+  scheduleAmbienceGain(simmerGain.gain, settings.gain, now);
+  if (simmerSource) simmerSource.playbackRate.setTargetAtTime(settings.playbackRate, now, AMBIENCE_TIME_CONSTANT_S);
   simmerTargets = settings;
 }
 
@@ -1432,6 +1430,7 @@ function installTestHook() {
   const getters = {
     particles: () => particles,
     score: () => score,
+    perfectClearBonus: () => perfectClearBonusScore,
     scooped: () => scooped,
     soupLossMl: () => soupLossMl,
     simulationTimeMs: () => simulationTimeMs,
@@ -1450,9 +1449,12 @@ function installTestHook() {
     scoopAttempts: () => scoopAttempts,
     playedMs: () => playedMs,
     remainingMs: () => remainingMs,
+    ambienceGain: () => simmerGain ? simmerGain.gain.value : null,
+    ambienceTargetGain: () => simmerTargets?.gain ?? null,
     canvasWidth: () => canvasWidth,
     canvasHeight: () => canvasHeight,
     potRadius: () => currentPotRadius(),
+    drawnPotRadius: () => drawnPotRadius(canvasWidth, canvasHeight),
     lives: () => lives,
     waves: () => wavesSpawned,
     maxCombo: () => maxCombo,
@@ -1508,7 +1510,7 @@ document.getElementById('soundToggle').addEventListener('change', event => {
   soundEnabled = event.target.checked;
   saveSettings();
   if (soundEnabled && prepareAudioContextFromGesture()) playSound('scoop');
-  updateSimmerAmbience(heatLevelAt(simulationTimeMs, BROTHS[brothId]), !soundEnabled);
+  updateSimmerAmbience(heatLevelAt(simulationTimeMs, BROTHS[brothId]));
 });
 skinSelect.addEventListener('change', () => {
   selectedSkin = skinSelect.value in POT_SKINS ? skinSelect.value : 'steel';

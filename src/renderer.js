@@ -2,7 +2,7 @@
 import {
   brothId, canvasHeight, canvasWidth, ctx, currentTool, highContrast,
   isOilChilled, mouse, particleGroups, reduceMotion, selectedSkin, visualEffects
-} from './game.js?v=20261117-1';
+} from './game.js?v=20261118-1';
 import { BROTHS, POT_RADIUS_RATIO, POT_SKINS, scaledToolShape, TOOL_SHAPES } from './config.js';
 import { WAVE_FADE_IN_MS } from './balance.js';
 import { drawFoodSprite } from './food-sprites.js';
@@ -21,6 +21,9 @@ const POT_GEOMETRY = Object.freeze({
   soupRadiusX: .875,
   soupRadiusY: .855
 });
+export function drawnPotRadius(width, height) {
+  return Math.min(width, height) * POT_GEOMETRY.outerRadiusX;
+}
 const POT_BODY_GRADIENT_OFFSETS = Object.freeze([0, .06, .14, .24, .29, .76, .93, 1]);
 const POT_RIM_STOPS = Object.freeze([[0, '#fff9e9'], [.1, '#59564f'], [.24, '#e4ddcf'], [.42, '#777268'], [.58, '#f8f0df'], [.76, '#625c51'], [1, '#282622']]);
 const POT_INTERIOR_STOPS = Object.freeze([[0, '#d9d3c6'], [.13, '#6e6b63'], [.3, '#a59e8c'], [.52, '#4a4842'], [.75, '#242321'], [1, '#121211']]);
@@ -90,7 +93,7 @@ function drawTableAndPot(target, w, h, skinId, contrast) {
   const size = Math.min(w, h);
   const cx = w / 2;
   const cy = h / 2;
-  const rx = size * POT_GEOMETRY.outerRadiusX;
+  const rx = drawnPotRadius(w, h);
   const ry = rx * POT_GEOMETRY.outerRadiusY;
 
   const backdrop = target.createRadialGradient(cx, cy, size * 0.08, cx, cy, size * 0.74);
@@ -205,8 +208,9 @@ function drawBrothBase(target, w, h, brothId, contrast) {
   const size = Math.min(w, h);
   const cx = w / 2;
   const cy = h / 2;
-  const rx = size * POT_GEOMETRY.outerRadiusX * POT_GEOMETRY.soupRadiusX;
-  const ry = size * POT_GEOMETRY.outerRadiusX * POT_GEOMETRY.outerRadiusY * POT_GEOMETRY.soupRadiusY;
+  const potRadius = drawnPotRadius(w, h);
+  const rx = potRadius * POT_GEOMETRY.soupRadiusX;
+  const ry = potRadius * POT_GEOMETRY.outerRadiusY * POT_GEOMETRY.soupRadiusY;
   const appearance = BROTH_APPEARANCE[brothId];
 
   target.save();
@@ -365,8 +369,9 @@ export function drawSoup(now = 0, simulationTimeMs = now) {
   ctx.drawImage(potSurface, 0, 0, w, h);
   ctx.drawImage(brothSurface, 0, 0, w, h);
 
-  const soupRx = size * POT_GEOMETRY.outerRadiusX * POT_GEOMETRY.soupRadiusX;
-  const soupRy = size * POT_GEOMETRY.outerRadiusX * POT_GEOMETRY.outerRadiusY * POT_GEOMETRY.soupRadiusY;
+  const potRadius = drawnPotRadius(w, h);
+  const soupRx = potRadius * POT_GEOMETRY.soupRadiusX;
+  const soupRy = potRadius * POT_GEOMETRY.outerRadiusY * POT_GEOMETRY.soupRadiusY;
   const heat = heatLevelAt(simulationTimeMs, BROTHS[brothId]);
   drawSurfaceMotion(now, brothId, heat, size, cx, cy, soupRx, soupRy);
   drawSteam(now, heat, size, cx, cy, soupRx, soupRy);
@@ -511,7 +516,7 @@ function drawParticleHitOverlay() {
 }
 
 export function drawTool() {
-  const potRadius = Math.min(canvasWidth, canvasHeight) * POT_GEOMETRY.outerRadiusX;
+  const potRadius = drawnPotRadius(canvasWidth, canvasHeight);
   if (!TOOL_SHAPES[currentTool]) return;
   const shape = scaledToolShape(currentTool, potRadius);
   if (!shape) return;

@@ -7,10 +7,11 @@ let browser;
 try {
   browser = await launchChromium();
 
-  async function createGamePage(viewport = { width: 1280, height: 800 }) {
+  async function createGamePage(viewport = { width: 1280, height: 800 }, { enableSound = false } = {}) {
     const page = await browser.newPage({ viewport, deviceScaleFactor: 1 });
     await page.goto(`${server.origin}/?test=1`, { waitUntil: 'load' });
     assert.equal(await page.evaluate(() => Boolean(window.__hotpot)), true, 'test hook is available with ?test=1');
+    if (enableSound) await page.click('#soundToggle');
     await page.click('#startBtn');
     await page.waitForFunction(() => window.__hotpot.state.running);
     return page;
@@ -62,6 +63,34 @@ try {
       assert.equal(await page.evaluate(() => window.__hotpot.state.running), false, 'hidden visibility pauses the game');
       const pausedRemainingMs = await page.evaluate(() => window.__hotpot.state.remainingMs);
       assert.match(await page.locator('#hint').textContent(), /已暫停/);
+      await page.waitForTimeout(1_000);
+      assert.equal(await page.evaluate(() => window.__hotpot.state.remainingMs), pausedRemainingMs, 'paused time does not count down');
+    } finally {
+      await page.close();
+    }
+  }
+
+  {
+    const page = await createGamePage({ width: 1280, height: 800 }, { enableSound: true });
+    try {
+      await page.waitForFunction(() => window.__hotpot.state.ambienceTargetGain > 0, undefined, { timeout: 1_000 });
+      await page.locator('#soundToggle').evaluate(toggle => toggle.click());
+      assert.equal(await page.evaluate(() => window.__hotpot.state.ambienceTargetGain), 0, 'muting targets zero ambience gain');
+      await page.waitForFunction(() => window.__hotpot.state.ambienceGain === 0, undefined, { timeout: 1_000 });
+    } finally {
+      await page.close();
+    }
+  }
+
+  {
+    const page = await createGamePage({ width: 1280, height: 800 }, { enableSound: true });
+    try {
+      await page.waitForFunction(() => window.__hotpot.state.ambienceTargetGain > 0, undefined, { timeout: 1_000 });
+      await page.click('#pauseBtn');
+      assert.equal(await page.evaluate(() => window.__hotpot.state.running), false, 'pause stops the game');
+      assert.equal(await page.evaluate(() => window.__hotpot.state.ambienceTargetGain), 0, 'pause targets zero ambience gain');
+      await page.waitForFunction(() => window.__hotpot.state.ambienceGain < 0.001, undefined, { timeout: 1_500 });
+      const pausedRemainingMs = await page.evaluate(() => window.__hotpot.state.remainingMs);
       await page.waitForTimeout(1_000);
       assert.equal(await page.evaluate(() => window.__hotpot.state.remainingMs), pausedRemainingMs, 'paused time does not count down');
     } finally {
@@ -178,6 +207,38 @@ try {
   {
     const page = await createGamePage({ width: 1920, height: 1080 });
     try {
+      const potHitbox = await page.evaluate(() => {
+        const { particles, canvasWidth, canvasHeight, potRadius, drawnPotRadius } = window.__hotpot.state;
+        const canvasRect = document.querySelector('#canvas').getBoundingClientRect();
+        const diameterRatio = (2 * potRadius * canvasRect.height / canvasHeight) / window.innerHeight;
+        const radiusDifference = Math.abs(drawnPotRadius - potRadius);
+        const centerX = canvasWidth / 2;
+        const centerY = canvasHeight / 2;
+        const particle = particles.find(candidate => candidate.type === 'oil');
+        if (!particle) return { diameterRatio, radiusDifference, hasParticle: false };
+        particle.spawnedAtMs = undefined;
+        particle.r = 1;
+        particle.x = centerX + potRadius * .97;
+        particle.y = centerY;
+        const insideHits = window.__hotpot.hitTest(particle.x, particle.y, 'spoon');
+        const outsideHits = window.__hotpot.hitTest(centerX + potRadius * 1.15, centerY, 'spoon');
+        return {
+          diameterRatio,
+          radiusDifference,
+          hasParticle: true,
+          insideHit: insideHits.includes(particle),
+          outsideHitCount: outsideHits.length
+        };
+      });
+      assert.ok(potHitbox.diameterRatio >= .60,
+        `desktop pot diameter ratio is at least 0.60: ${potHitbox.diameterRatio}`);
+      assert.ok(potHitbox.radiusDifference < .5,
+        `drawn and hitbox pot radii match within 0.5 px: ${potHitbox.radiusDifference}`);
+      assert.equal(potHitbox.hasParticle, true, 'an oil particle is available for the spoon hit test');
+      assert.equal(potHitbox.insideHit, true, 'the spoon hitbox reaches just inside the drawn pot rim');
+      assert.equal(potHitbox.outsideHitCount, 0, 'the spoon hitbox has no hits clearly outside the drawn pot rim');
+      console.log(`desktop pot diameter ratio=${potHitbox.diameterRatio.toFixed(4)}`);
+
       const outsideFraction = () => page.evaluate(() => {
         const { particles, canvasWidth, canvasHeight, potRadius } = window.__hotpot.state;
         const centerX = canvasWidth / 2;

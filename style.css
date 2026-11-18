@@ -90,7 +90,8 @@ body:has(#game:not(.hidden)) {
 #game .hint { max-height: 2.4em; overflow: hidden; margin: 3px 0 0; font-size: .76rem; line-height: 1.2; }
 .canvas-stage #canvas {
   display: block;
-  width: min(100%, 800px);
+  /* Sourced from CANVAS_MAX_DISPLAY_SIZE in src/config.js. */
+  width: min(100%, var(--canvas-max-display-size, 800px));
   height: auto;
   aspect-ratio: 1 / 1;
   max-width: 100%;
